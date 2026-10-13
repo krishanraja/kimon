@@ -125,7 +125,7 @@ document.querySelectorAll('.nav-btn').forEach(b => b.addEventListener('click', (
 }));
 function go(name) {
   document.querySelectorAll('.view').forEach(v => { v.hidden = v.dataset.view !== name; });
-  document.querySelectorAll('.nav-btn').forEach(b => b.toggleAttribute('aria-current', b.dataset.go === name));
+  document.querySelectorAll('.nav-btn').forEach(b => { if (b.dataset.go === name) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
   if (name !== 'ask') stopListening();
   requestAnimationFrame(fitAll);
 }
