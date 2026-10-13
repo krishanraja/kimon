@@ -30,3 +30,8 @@ test('history: merges duplicate concerns, hides test rows, newest first, no raw 
   assert.equal(ev[1].detail, 'score 612 (severe)');
   assert.equal(ev[1].date, '9 Feb 2026');
 });
+test('history: saved answer data never leaks into the timeline', () => {
+  const ev = historyEvents({ notes: [{ tsUTC: '2026-03-01T10:00:00Z', by: 'A', tag: 'concern', text: 'CONCERN: is he ok\nURGENCY: soon\nANSWER: See his GP this week.\nRID: abc123\nDATA: {"answer":{}}' }] });
+  assert.equal(ev[0].answer, 'See his GP this week.');
+  assert.doesNotMatch(JSON.stringify(ev), /RID|DATA/);
+});

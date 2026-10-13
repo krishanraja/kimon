@@ -128,6 +128,10 @@ button { cursor: pointer; border: 0; background: none; }
 .orb:not(.on) .r1 { animation: idle 3.6s ease-in-out infinite; }
 .orb.on .ring { animation: ripple 1.6s ease-out infinite; }
 .orb.on .r2 { animation-delay: .8s; }
+.orb.on { transform: scale(calc(1 + var(--lvl, 0) * .14)); transition: transform .08s linear; }
+.orb.busy { animation: thinking 1.4s ease-in-out infinite; }
+.orb.busy svg { opacity: .55; }
+@keyframes thinking { 50% { transform: scale(.94); opacity: .8; } }
 .orb.on { background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--emergency) 55%, white), var(--emergency) 72%); }
 .orb.on .ring { border-color: var(--emergency); }
 @keyframes idle { 0%, 100% { transform: scale(1); opacity: 0; } 50% { transform: scale(1.12); opacity: .35; } }
@@ -349,6 +353,7 @@ button { cursor: pointer; border: 0; background: none; }
 /* ---------- mic button (sheets, check-in, appointment) ---------- */
 .micbtn { min-height: 54px; padding: 0 18px; border-radius: 16px; border: 1.5px solid var(--line); background: var(--card); display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
 .micbtn svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; }
+.micbtn[disabled] { opacity: .6; }
 .micbtn[aria-pressed="true"] { background: var(--emergency); color: #fff; border-color: transparent; animation: pulseMic 1.4s ease-in-out infinite; }
 @keyframes pulseMic { 50% { box-shadow: 0 0 0 8px color-mix(in srgb, var(--emergency) 18%, transparent); } }
 

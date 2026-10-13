@@ -22,7 +22,7 @@ function patientContext(canon) {
     '## Medications', rows(canon.medications, 30, m => `- ${m.name} ${m.dose} ${m.frequency} [${m.status}] started ${m.started}`),
     '## Test results', rows(canon.testResults, 60, t => `- ${t.date} ${t.test}: ${t.result}${t.notes ? ' (' + t.notes + ')' : ''}`),
     '## Recent check-ins (oldest first)', rows(canon.checkins, 8, c => `- ${c.tsMelb}: chest=${c.chest} breath=${c.breath} walking=${c.walking} energy=${c.energy} tablets=${c.tablets} mood=${c.mood} -> ${c.verdict}. ${c.notes}`),
-    '## Recent notes and earlier concerns (oldest first)', rows(canon.notes, 15, n => `- ${String(n.tsUTC).slice(0, 10)} [${n.tag}] ${n.text}`),
+    '## Recent notes and earlier concerns (oldest first)', rows((canon.notes || []).filter(n => n.by !== 'claude-test'), 15, n => `- ${String(n.tsUTC).slice(0, 10)} [${n.tag}] ${String(n.text).replace(/\nRID:[\s\S]*$/, '')}`),
     '## Open questions for clinicians', rows((canon.questions || []).filter(q => q.status !== 'answered'), 20, q => `- ${q.id} (${q.askWhom}, p${q.priority}): ${q.question}`),
     '## Answered questions', rows((canon.questions || []).filter(q => q.status === 'answered'), 20, q => `- ${q.question} => ${q.answer}`),
     '## Knowledge gaps', rows(canon.gaps, 20, g => `- ${g.id} [${g.status}] ${g.gap}. Closed by: ${g.whatAnswersIt}`),
@@ -126,50 +126,79 @@ function fallbackAnswer(concern, level, reasons) {
   };
 }
 
+// Streams newline-delimited JSON: {type:'stage'} progress lines, {type:'ping'}
+// keep-alives, then one {type:'answer'}. A phone that loses the connection can
+// fetch the saved answer later from /api/answer?rid=.
 export default async function handler(req, res) {
   if (!requireAuth(req, res)) return;
   if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'POST only' });
   const concern = String((req.body && req.body.concern) || '').trim().slice(0, 2000);
   const by = String((req.body && req.body.by) || 'app').slice(0, 40);
+  const rid = String((req.body && req.body.rid) || '').replace(/[^a-z0-9]/gi, '').slice(0, 24) || Math.random().toString(36).slice(2, 12);
   if (concern.length < 3) return res.status(400).json({ ok: false, error: 'Say or type the concern first' });
 
-  const rules = triage(concern);
+  res.statusCode = 200;
+  res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store, no-transform');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders?.();
+  let open = true;
+  res.on('close', () => { open = false; });
+  const send = obj => { if (open) { try { res.write(JSON.stringify(obj) + '\n'); } catch { open = false; } } };
+  const ping = setInterval(() => send({ type: 'ping' }), 5000);
 
-  let canon = null, recordError = null;
-  try { canon = await readCanon({ timeoutMs: 9000 }); }
-  catch (e) { recordError = e.code === 'NO_SECRET' ? 'Sheet not connected yet' : 'His record could not be loaded'; }
-
-  let answer, source;
   try {
-    const out = await complete({
-      req,
-      system: systemPrompt(),
-      user: `# His live record (from the family's Google Sheet)\n${patientContext(canon)}\n\n# Rule-based triage already shown to her\nlevel=${rules.level}; reasons=${rules.reasons.join('; ') || 'none'}\n\n# Her concern (verbatim)\n${concern}`,
-    });
-    answer = withSources(clean(extractJson(out.text)), out.sources);
-    source = { kind: 'ai', model: out.model, web: out.tools, searched: out.sources.length };
-  } catch (e) {
-    answer = fallbackAnswer(concern, rules.level, rules.reasons);
-    console.error(JSON.stringify({ askFallback: e.code || 'ERR', message: String(e.message).slice(0, 200) }));
-    source = { kind: 'rules', reason: e.code === 'NO_AI' ? 'AI not configured' : 'AI unavailable: ' + e.message.slice(0, 120) };
-  }
+    const rules = triage(concern);
+    send({ type: 'stage', text: 'Reading his record', rid, triage: rules });
 
-  // The model may raise urgency but never lower it below the red-flag rules.
-  answer.urgency = maxLevel(answer.urgency, rules.level);
+    let canon = null, recordError = null;
+    try { canon = await readCanon({ timeoutMs: 9000 }); }
+    catch (e) { recordError = e.code === 'NO_SECRET' ? 'Sheet not connected yet' : 'His record could not be loaded'; }
 
-  let saved = false;
-  if (canon) {
+    send({ type: 'stage', text: 'Checking the heart guide' });
+    let answer, source, searches = 0, pages = 0;
     try {
-      await write('note', {
-        text: `CONCERN: ${concern}\nURGENCY: ${answer.urgency}\nANSWER: ${answer.headline}`.slice(0, 4000),
-        tag: 'concern',
-      }, by, { timeoutMs: 8000 });
-      saved = true;
-    } catch { /* answer still returned; client shows not-saved */ }
-  }
+      const out = await complete({
+        req,
+        system: systemPrompt(),
+        user: `# His live record (from the family's Google Sheet)\n${patientContext(canon)}\n\n# Rule-based triage already shown to her\nlevel=${rules.level}; reasons=${rules.reasons.join('; ') || 'none'}\n\n# Her concern (verbatim)\n${concern}`,
+        onProgress: p => {
+          if (p.kind === 'search') send({ type: 'stage', text: `Searching trusted medical sites (${++searches})` });
+          else if (p.kind === 'results') { pages += p.n; send({ type: 'stage', text: `Found ${pages} trusted pages` }); }
+          else if (p.kind === 'fetch' || p.kind === 'read') send({ type: 'stage', text: 'Reading a source in full' });
+          else if (p.kind === 'writing') send({ type: 'stage', text: 'Writing it plainly' });
+        },
+      });
+      answer = withSources(clean(extractJson(out.text)), out.sources);
+      source = { kind: 'ai', model: out.model, web: out.tools, searched: out.sources.length };
+    } catch (e) {
+      answer = fallbackAnswer(concern, rules.level, rules.reasons);
+      console.error(JSON.stringify({ askFallback: e.code || 'ERR', message: String(e.message).slice(0, 200) }));
+      source = { kind: 'rules', reason: e.code === 'NO_AI' ? 'AI not configured' : 'AI unavailable: ' + e.message.slice(0, 120) };
+    }
 
-  return res.status(200).json({
-    ok: true, concern, triage: rules, answer, contacts: CONTACTS[answer.urgency],
-    source, saved, recordLoaded: Boolean(canon), recordError,
-  });
+    // The model may raise urgency but never lower it below the red-flag rules.
+    answer.urgency = maxLevel(answer.urgency, rules.level);
+    const payload = { ok: true, rid, concern, triage: rules, answer, contacts: CONTACTS[answer.urgency], source, recordLoaded: Boolean(canon), recordError };
+
+    let saved = false;
+    if (canon) {
+      send({ type: 'stage', text: 'Saving to his record' });
+      try {
+        // Full answer kept with its request id, so a dropped phone connection can recover it.
+        await write('note', {
+          text: `CONCERN: ${concern}\nURGENCY: ${answer.urgency}\nANSWER: ${answer.headline}\nRID: ${rid}\nDATA: ${JSON.stringify({ answer, source })}`.slice(0, 40000),
+          tag: 'concern',
+        }, by, { timeoutMs: 10000 });
+        saved = true;
+      } catch { /* answer still returned; client shows not-saved */ }
+    }
+    send({ type: 'answer', ...payload, saved });
+  } catch (e) {
+    console.error(JSON.stringify({ askCrash: String(e.message).slice(0, 300) }));
+    send({ type: 'error', error: 'Something went wrong on the server. Please try again.' });
+  } finally {
+    clearInterval(ping);
+    if (open) res.end();
+  }
 }

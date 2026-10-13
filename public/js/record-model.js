@@ -91,7 +91,7 @@ export function historyEvents(canon) {
     if (/concern/i.test(n.tag)) {
       const q = (text.match(/CONCERN:\s*([\s\S]*?)(?:\nURGENCY:|$)/) || [, text])[1].trim();
       const urgency = (text.match(/URGENCY:\s*(\w+)/) || [])[1] || '';
-      const answer = (text.match(/ANSWER:\s*([\s\S]*)$/) || [])[1] || '';
+      const answer = (text.match(/ANSWER:\s*([\s\S]*?)(?:\nRID:|$)/) || [])[1] || '';
       const prev = concerns.get(q);
       if (prev) { prev.count++; if (n.tsUTC > prev.ts) Object.assign(prev, { key: k, ts: n.tsUTC, urgency, answer: firstSentence(answer) }); }
       else concerns.set(q, { key: k, ts: n.tsUTC, kind: 'concern', title: 'You asked', detail: clip(q, 90), concern: q, urgency, answer: firstSentence(answer), count: 1 });

@@ -3,6 +3,7 @@ import { mountRecord, refreshRecord, recordHome, openSheet } from '/js/record.js
 import { extract, resultCards, situation, fmtDate, STAGES } from '/js/metrics.js';
 import { plainTask } from '/js/record-model.js';
 import { resultsText } from '/js/speech.js';
+import { canRecord, startRecording, transcribeBlob, fmtTime } from '/js/recorder.js';
 
 /* ---------------- tiny helpers ---------------- */
 const $ = (s, el = document) => el.querySelector(s);
@@ -109,6 +110,7 @@ async function boot() {
   buildCheck(); buildRecord();
   await flushQueue();
   loadCanon();
+  checkPendingAsk();
 }
 
 /* ---------------- tabs ---------------- */
@@ -180,44 +182,100 @@ const askParts = ['askIdle', 'askReview', 'askThinking', 'ideasSheet', 'answerDe
 function askShow(id) { askParts.forEach(p => { $('#' + p).hidden = p !== id; }); }
 
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let rec = null, listening = false;
+let rec = null, listening = false, orbRec = null, orbTimer = 0;
+const micBlocked = () => toast('Microphone blocked. Allow it in browser settings, or type.', 4000);
 
-// Shared dictation for any text box. Returns stop(), or null if unsupported.
+// Shared dictation for any text box. Records on the phone and transcribes on
+// the server; falls back to the browser recogniser. Returns stop(), or null.
+// onState(true) while recording, ('busy') while transcribing, (false) when done.
 function listen(onText, onState) {
-  if (!SR) { toast('Voice is not available in this browser. Type instead.'); return null; }
   if (listening) stopListening(false);
+  if (canRecord()) {
+    let handle = null, done = false;
+    startRecording({ onAutoStop: () => stop() }).then(h => { handle = h; onState?.(true); navigator.vibrate?.(15); })
+      .catch(e => { done = true; onState?.(false); if (e?.name === 'NotAllowedError') micBlocked(); else toast('Could not start the microphone'); });
+    async function stop() {
+      if (done || !handle) return; done = true;
+      onState?.('busy');
+      try { const text = await transcribeBlob(await handle.stop()); if (text) onText(text); else toast("Didn't catch that. Try again."); }
+      catch { toast("Couldn't turn that into words. Try again, or type."); }
+      onState?.(false);
+    }
+    return () => { stop(); };
+  }
+  if (!SR) { toast('Voice is not available in this browser. Type instead.'); return null; }
   const r = new SR(); r.lang = 'en-AU'; r.continuous = true; r.interimResults = true;
   let live = true;
   r.onresult = e => onText(resultsText(e));
-  r.onerror = e => { if (e.error === 'not-allowed') toast('Microphone blocked. Allow it in browser settings, or type.'); };
+  r.onerror = e => { if (e.error === 'not-allowed') micBlocked(); };
   r.onend = () => { if (live) { live = false; onState?.(false); } };
   try { r.start(); } catch { return null; }
   onState?.(true); navigator.vibrate?.(15);
   return () => { if (live) { live = false; try { r.stop(); } catch { /* stopped */ } onState?.(false); } };
 }
 
-function startListening() {
+function orbState(state) {
+  const orb = $('#orb');
+  orb.classList.toggle('on', state === 'rec');
+  orb.classList.toggle('busy', state === 'busy');
+  orb.setAttribute('aria-pressed', String(state === 'rec'));
+  orb.setAttribute('aria-label', state === 'rec' ? 'Stop and review' : 'Start speaking');
+  $('#askEyebrow').textContent = state === 'rec' ? 'Listening. Tap when done' : state === 'busy' ? 'Writing down what you said' : 'Tap and talk';
+  if (state !== 'rec') orb.style.removeProperty('--lvl');
+}
+
+async function startListening() {
+  if (!canRecord()) return startBrowserListening();
+  try {
+    orbRec = await startRecording({ onLevel: v => $('#orb').style.setProperty('--lvl', v.toFixed(2)), onAutoStop: () => stopListening(true) });
+  } catch (e) {
+    if (e?.name === 'NotAllowedError') micBlocked(); else toast('Could not start the microphone. Type instead.');
+    return openReview('');
+  }
+  listening = true; orbState('rec'); navigator.vibrate?.(15);
+  $('#live').textContent = '0:00';
+  orbTimer = setInterval(() => { if (orbRec) $('#live').textContent = fmtTime(orbRec.elapsed()); }, 250);
+}
+
+async function stopListening(toReview) {
+  if (!listening) return;
+  listening = false;
+  if (rec) { try { rec.stop(); } catch { /* stopped */ } rec = null; }
+  if (!orbRec) { // browser recogniser path
+    orbState('idle');
+    const said = $('#live').textContent.trim();
+    if (toReview && said) openReview(said);
+    return;
+  }
+  clearInterval(orbTimer);
+  const h = orbRec; orbRec = null;
+  orbState('busy'); $('#live').textContent = '';
+  try {
+    const text = await transcribeBlob(await h.stop());
+    orbState('idle');
+    if (!toReview) return;
+    if (text) openReview(text); else { toast("Didn't catch that. Try again, a little closer to the phone."); }
+  } catch {
+    orbState('idle');
+    if (toReview) { toast("Couldn't turn that into words. Try again, or type.", 4000); openReview(''); }
+  }
+}
+
+// Fallback for browsers without recording support.
+function startBrowserListening() {
   if (!SR) { toast('Voice is not available in this browser. Type instead.'); return openReview(''); }
   rec = new SR(); rec.lang = 'en-AU'; rec.continuous = true; rec.interimResults = true;
   rec.onresult = e => { $('#live').textContent = resultsText(e); };
-  rec.onerror = e => { if (e.error === 'not-allowed') toast('Microphone blocked. Allow it in browser settings, or type.'); stopListening(true); };
+  rec.onerror = e => { if (e.error === 'not-allowed') micBlocked(); stopListening(true); };
   rec.onend = () => { if (listening) stopListening(true); };
   try { rec.start(); } catch { return; }
-  listening = true;
-  $('#orb').classList.add('on'); $('#orb').setAttribute('aria-pressed', 'true'); $('#orb').setAttribute('aria-label', 'Stop and review');
-  $('#askEyebrow').textContent = 'Listening. Tap when done';
-  $('#live').textContent = '';
+  listening = true; orbState('rec'); $('#live').textContent = '';
   navigator.vibrate?.(15);
 }
-function stopListening(toReview) {
-  if (!listening) return;
-  listening = false; try { rec?.stop(); } catch { /* already stopped */ }
-  $('#orb').classList.remove('on'); $('#orb').setAttribute('aria-pressed', 'false'); $('#orb').setAttribute('aria-label', 'Start speaking');
-  $('#askEyebrow').textContent = 'Tap and talk';
-  const said = $('#live').textContent.trim();
-  if (toReview && said) openReview(said);
-}
-$('#orb').addEventListener('click', () => listening ? stopListening(true) : startListening());
+$('#orb').addEventListener('click', () => {
+  if ($('#orb').classList.contains('busy')) return;
+  listening ? stopListening(true) : startListening();
+});
 
 function openReview(text) {
   askShow('askReview');
@@ -241,25 +299,108 @@ $('#ideasClose').addEventListener('click', () => askShow('askIdle'));
 document.querySelectorAll('.idea').forEach(b => b.addEventListener('click', () => openReview(b.textContent)));
 $('#redo').addEventListener('click', () => { store.set('draft', ''); $('#live').textContent = ''; askShow('askIdle'); });
 
-const THINK = ['Reading his record', 'Checking the heart guide', 'Searching trusted medical sites', 'Reading what they say', 'Weighing what matters for him', 'Writing it plainly'];
-$('#askBtn').addEventListener('click', async () => {
-  const concern = $('#concern').value.trim();
-  if (concern.length < 3) { toast('Say or type the worry first'); return; }
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// Keep the screen on while an answer is being prepared (a sleeping phone can
+// drop the connection). Best effort: not every browser supports it.
+let wakeLock = null;
+async function keepAwake(on) {
+  try {
+    if (on && 'wakeLock' in navigator && !wakeLock) { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener?.('release', () => { wakeLock = null; }); }
+    if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; }
+  } catch { wakeLock = null; }
+}
+
+// Read the server's progress stream until the answer arrives.
+async function streamAsk(concern, rid, onStage) {
+  const r = await fetch('/api/ask', {
+    method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ concern, by: who(), rid }), signal: AbortSignal.timeout(190000),
+  });
+  if (r.status === 401) { showLogin(); throw Object.assign(new Error('login required'), { status: 401 }); }
+  if (!r.ok || !r.body) throw new Error('HTTP ' + r.status);
+  const reader = r.body.getReader(), dec = new TextDecoder();
+  let buf = '';
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let i;
+    while ((i = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+      if (!line) continue;
+      let ev; try { ev = JSON.parse(line); } catch { continue; }
+      if (ev.type === 'stage') onStage(ev.text);
+      else if (ev.type === 'answer') return ev;
+      else if (ev.type === 'error') throw new Error(ev.error);
+    }
+  }
+  throw new Error('connection closed before the answer');
+}
+
+// The server saves every answer with its id; fetch it if the stream was lost.
+async function recoverAnswer(rid, tries = 8) {
+  for (let i = 0; i < tries; i++) {
+    await sleep(i === 0 ? 2000 : 8000);
+    try {
+      const r = await fetch('/api/answer?rid=' + encodeURIComponent(rid), { credentials: 'same-origin', signal: AbortSignal.timeout(20000) });
+      if (r.ok) return await r.json();
+    } catch { /* keep trying */ }
+  }
+  return null;
+}
+
+let asking = false;
+async function runAsk(concern) {
+  asking = true;
+  const rid = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+  store.set('pendingAsk', { rid, concern, ts: Date.now() });
   askShow('askThinking');
   const lvl = updateFlag('#thinkFlag');
-  let k = 0; $('#thinkLine').textContent = THINK[0];
-  const timer = setInterval(() => { k = Math.min(k + 1, THINK.length - 1); $('#thinkLine').textContent = THINK[k]; }, 5000);
+  const line = t => { $('#thinkLine').textContent = t; };
+  line('Sending your question');
+  keepAwake(true);
+  let res = null;
   try {
-    const res = await api('/api/ask', { method: 'POST', body: { concern, by: who() }, timeout: 170000 });
-    store.set('draft', '');
+    res = await streamAsk(concern, rid, line);
+  } catch (e) {
+    if (e.status === 401) { asking = false; keepAwake(false); return; }
+    // A server error before anything was saved: try once more straight away.
+    if (/^HTTP 5/.test(e.message)) {
+      line('Trying again');
+      try { res = await streamAsk(concern, rid, line); } catch { /* fall through to recovery */ }
+    }
+    if (!res) { line('The connection dropped. Getting your answer'); res = await recoverAnswer(rid); }
+  }
+  keepAwake(false);
+  asking = false;
+  if (res) {
+    store.set('pendingAsk', null); store.set('draft', '');
     showAnswer(res);
     if (res.saved) loadCanon();
-  } catch (e) {
-    if (e.status === 401) return;
-    toast(lvl === 'emergency' ? 'No connection. If this is happening now: call 000.' : 'Could not reach the server. Your words are kept, try again.', 5000);
+  } else {
+    toast(lvl === 'emergency' ? 'No connection. If this is happening now: call 000.' : "The answer didn't arrive. Your words are kept. Tap Get the answer to try again.", 6000);
     openReview(concern);
-  } finally { clearInterval(timer); }
+  }
+}
+$('#askBtn').addEventListener('click', () => {
+  const concern = $('#concern').value.trim();
+  if (concern.length < 3) { toast('Say or type the worry first'); return; }
+  runAsk(concern);
 });
+
+// Back on the app after switching away: collect an answer that finished meanwhile.
+async function checkPendingAsk() {
+  const p = store.get('pendingAsk', null);
+  if (!p || asking || Date.now() - p.ts > 15 * 60000) return;
+  const res = await recoverAnswer(p.rid, 2);
+  if (res && !asking) {
+    store.set('pendingAsk', null);
+    go('ask'); showAnswer(res); toast('Here is the answer to your last question');
+  }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkPendingAsk(); });
+
 
 const LEVEL_NAME = { emergency: 'Emergency', urgent: 'Today', soon: 'This week', routine: 'No red flags' };
 
@@ -352,7 +493,7 @@ function buildCheck() {
       b.onclick = () => {
         if (stop) { stop(); return; }
         const base = t.value ? t.value.trim() + ' ' : '';
-        stop = listen(x => { t.value = base + x; answers._gaps[g.id] = t.value; }, on => { b.setAttribute('aria-pressed', String(on)); b.querySelector('span').textContent = on ? 'Stop' : 'Speak'; if (!on) stop = null; });
+        stop = listen(x => { t.value = base + x; answers._gaps[g.id] = t.value; }, on => { b.setAttribute('aria-pressed', String(on === true)); b.disabled = on === 'busy'; b.querySelector('span').textContent = on === true ? 'Stop' : on === 'busy' ? 'Writing…' : 'Speak'; if (on === false) stop = null; });
       };
     },
   }));

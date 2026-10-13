@@ -242,8 +242,9 @@ function wireMic(btn, ta) {
     if (micStop) { stopMic(); return; }
     const base = ta.value ? ta.value.trim() + ' ' : '';
     micStop = ctx.listen(text => { ta.value = base + text; ta.dispatchEvent(new Event('input')); }, on => {
-      btn.setAttribute('aria-pressed', String(on)); btn.querySelector('span').textContent = on ? 'Stop' : 'Speak';
-      if (!on) micStop = null;
+      btn.setAttribute('aria-pressed', String(on === true)); btn.disabled = on === 'busy';
+      btn.querySelector('span').textContent = on === true ? 'Stop' : on === 'busy' ? 'Writing…' : 'Speak';
+      if (on === false) micStop = null;
     });
   };
 }
