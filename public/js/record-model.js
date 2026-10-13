@@ -76,7 +76,7 @@ function clip(s, n) {
   return s.slice(0, n).replace(/\s+\S*$/, '').replace(/[,;:.\s]+$/, '');
 }
 function firstSentence(s) { return clip(String(s || '').split(/(?<=[.!?])\s/)[0], 90); }
-function testTitle(t) { return String(t).replace(/\s*\([^)]*\)\s*$/, '').replace(/^CT /, '').trim(); }
+function testTitle(t) { const s = String(t).replace(/\s*\([^)]*\)\s*$/, '').replace(/^CT /, '').trim(); return s.charAt(0).toUpperCase() + s.slice(1); }
 
 // Timeline events, newest first. Test rows by an automated tester are hidden.
 export function historyEvents(canon) {
