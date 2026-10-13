@@ -4,12 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="robots" content="noindex, nofollow">
-<meta name="theme-color" content="#f4efe6" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#121614" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Kimon">
-<title>Beside Kimon</title>
+<meta name="apple-mobile-web-app-title" content="Beside">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="application-name" content="Beside">
+<title>Beside</title>
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/icon-180.png">
@@ -20,9 +22,9 @@
 <!-- LOGIN -->
 <section id="login" class="login" hidden>
   <div class="login-card">
-    <svg class="heart" viewBox="0 0 48 48" aria-hidden="true"><path d="M24 41s-15-9.2-15-20.2C9 14.5 13.6 10 19 10c2.2 0 4 .9 5 2.4C25 10.9 26.8 10 29 10c5.4 0 10 4.5 10 10.8C39 31.8 24 41 24 41z"/><path class="pulse" d="M11 25h8l3-5 4 9 3-4h8"/></svg>
-    <h1>Beside Kimon</h1>
-    <p class="soft">Family only. Enter the access code.</p>
+    <img class="app-icon" src="/icon.svg" alt="" width="88" height="88">
+    <h1>Beside</h1>
+    <p class="soft">For the family looking after Kimon.</p>
     <form id="loginForm" autocomplete="off">
       <label for="code" class="sr">Access code</label>
       <input id="code" type="password" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Access code" required>
@@ -35,7 +37,7 @@
 <!-- APP -->
 <main id="app" hidden>
   <header class="top">
-    <span class="brand">Beside Kimon</span>
+    <span class="brand"><img src="/icon.svg" alt="" width="28" height="28">Beside</span>
     <span class="top-right">
       <button id="sync" class="sync" type="button" aria-live="polite"><i></i><span>Connecting</span></button>
       <button id="shareBtn" class="icon-btn" type="button" aria-label="Share a summary for his doctor"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg></button>
@@ -76,10 +78,7 @@
 
       <!-- thinking -->
       <div class="ask-thinking" id="askThinking" hidden>
-        <div class="beat" aria-hidden="true">
-          <span class="beat-glow"></span>
-          <svg viewBox="0 0 48 48"><path class="beat-fill" d="M24 41s-15-9.2-15-20.2C9 14.5 13.6 10 19 10c2.2 0 4 .9 5 2.4C25 10.9 26.8 10 29 10c5.4 0 10 4.5 10 10.8C39 31.8 24 41 24 41z"/><path class="beat-line" d="M11 25h8l3-5 4 9 3-4h8"/></svg>
-        </div>
+        <div class="beat" aria-hidden="true"><span class="beat-glow"></span><svg viewBox="0 0 100 100"><path class="beat-l" d="M50 84 C33 72 15 58 15 39.5 C15 27 24 18.5 35 18.5 C42 18.5 47 22.5 50 28.5 Z"/><path class="beat-r" d="M50 84 C67 72 85 58 85 39.5 C85 27 76 18.5 65 18.5 C58 18.5 53 22.5 50 28.5 Z"/></svg></div>
         <p class="think-line" id="thinkLine">Reading his record</p>
         <div id="thinkFlag" class="flag" hidden></div>
       </div>

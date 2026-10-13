@@ -1,4 +1,4 @@
-# Beside Kimon: evidence-backed cardiac care companion
+# Beside: evidence-backed cardiac care companion
 
 A phone-first web app for a family supporting their father (67, Melbourne)
 through a severe coronary artery calcification finding and the cardiology
