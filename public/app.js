@@ -1,4 +1,6 @@
 import { triage, CONTACTS } from '/js/triage.js';
+import { mountRecord, refreshRecord, recordHome } from '/js/record.js';
+import { extract, resultCards, fmtDate, STAGES } from '/js/metrics.js';
 
 /* ---------------- tiny helpers ---------------- */
 const $ = (s, el = document) => el.querySelector(s);
@@ -45,7 +47,7 @@ async function loadCanon() {
     canon = await api('/api/canon', { timeout: 14000 });
     store.set('canon', canon);
     setSync('ok', 'Up to date');
-    buildRecord();
+    refreshRecord();
   } catch (e) {
     if (e.status === 401) return;
     setSync(canon ? 'warn' : 'bad', canon ? 'Showing saved copy' : 'Offline');
@@ -107,7 +109,10 @@ async function boot() {
 }
 
 /* ---------------- tabs ---------------- */
-document.querySelectorAll('.nav-btn').forEach(b => b.addEventListener('click', () => go(b.dataset.go)));
+document.querySelectorAll('.nav-btn').forEach(b => b.addEventListener('click', () => {
+  if (b.dataset.go === 'record' && b.hasAttribute('aria-current')) recordHome();
+  go(b.dataset.go);
+}));
 function go(name) {
   document.querySelectorAll('.view').forEach(v => { v.hidden = v.dataset.view !== name; });
   document.querySelectorAll('.nav-btn').forEach(b => b.toggleAttribute('aria-current', b.dataset.go === name));
@@ -159,7 +164,10 @@ function deck(el, cards, { onDone, start = 0, doneIcon = CHECK } = {}) {
 function fit(box) {
   if (!box || !box.isConnected || !box.clientHeight) return;
   let fs = 19; box.style.setProperty('--fs', fs + 'px');
-  while (box.scrollHeight > box.clientHeight + 1 && fs > 13) { fs -= .5; box.style.setProperty('--fs', fs + 'px'); }
+  while (box.scrollHeight > box.clientHeight + 1 && fs > 12.5) { fs -= .5; box.style.setProperty('--fs', fs + 'px'); }
+  // Still too tall at the smallest readable size: drop secondary lines, last first.
+  const drops = [...box.querySelectorAll('.drop')];
+  while (box.scrollHeight > box.clientHeight + 1 && drops.length) drops.pop().hidden = true;
 }
 function fitAll() { document.querySelectorAll('.view:not([hidden]) .fit').forEach(fit); }
 addEventListener('resize', () => requestAnimationFrame(fitAll));
@@ -356,85 +364,11 @@ function showCheckResult(verdict, r) {
 }
 
 /* ---------------- RECORD ---------------- */
-const STAT_PICK = [
-  [/calcium|agatston|\bcac\b/i, 'Calcium score', 'hot'],
-  [/^(?!.*non).*\bldl\b/i, 'LDL cholesterol', 'hot'],
-  [/non.?hdl/i, 'Non-HDL', 'warm'],
-  [/total.*chol|chol.*total|^cholesterol/i, 'Total cholesterol', 'warm'],
-  [/glucose|hba1c/i, 'Glucose', ''],
-  [/egfr|gfr/i, 'Kidney (eGFR)', ''],
-  [/trig/i, 'Triglycerides', ''],
-  [/blood pressure|\bbp\b/i, 'Blood pressure', ''],
-];
-
-function statVal(r) {
-  const m = String(r).trim().match(/^([<>]?\s*[\d.,/]+)\s*(.*)$/);
-  return m ? `${esc(m[1])}<small>${esc(short(m[2], 10))}</small>` : esc(short(r, 12));
-}
-function chunk(arr, n) { const out = []; for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n)); return out; }
-function short(s, n) { s = String(s || ''); return s.length > n ? s.slice(0, n - 1).trim() + '…' : s; }
-
 function buildRecord() {
-  const el = $('#recordDeck');
-  if (!canon) {
-    deck(el, [{ html: `<p class="kicker">His record</p><h3>${session.sheetConfigured === false ? 'The family sheet is not connected yet' : 'Loading his record'}</h3><p class="soft">${session.sheetConfigured === false ? 'Once it is connected, his numbers, questions and history appear here.' : 'One moment.'}</p>` }]);
-    return;
-  }
-  const tests = canon.testResults || [];
-  const stats = [];
-  for (const [re, label, cls] of STAT_PICK) {
-    const hit = [...tests].reverse().find(t => re.test(t.test));
-    if (hit && !stats.some(s => s.hit === hit)) stats.push({ hit, label, cls });
-    if (stats.length === 6) break;
-  }
-  const cards = [];
-  cards.push({
-    html: `<p class="kicker">The numbers that matter</p>
-      ${stats.length ? `<div class="stats">${stats.map(s => `<div class="stat ${s.cls}"><b>${statVal(s.hit.result)}</b><span>${esc(s.label)} · ${esc(s.hit.date)}</span></div>`).join('')}</div>` : '<p class="soft">No test results in the sheet yet.</p>'}
-      <p class="meta">From the family sheet, synced ${esc(canon.serverTimeMelb || '')} Melbourne time.</p>`,
+  mountRecord($('#rec'), {
+    canon: () => canon, session: () => session, save, toast, fit,
+    openAsk: text => { go('ask'); openReview(text); },
   });
-
-  const last = (canon.checkins || []).slice(-1)[0];
-  const concerns = (canon.notes || []).filter(n => /concern|symptom/i.test(n.tag)).slice(-3).reverse();
-  cards.push({
-    html: `<p class="kicker">Lately</p>
-      <h3>${last ? `Last check-in: ${esc(last.verdict)}` : 'No check-ins yet'}</h3>
-      ${last ? `<p class="meta">${esc(last.tsMelb)} · chest ${esc(last.chest)} · breath ${esc(last.breath)} · walking ${esc(last.walking)}</p>` : ''}
-      ${concerns.length ? list(concerns.map(n => short(String(n.text).replace(/^CONCERN:\s*/i, '').split('\n')[0], 110))) : '<p class="soft">Concerns you raise in Ask are kept here.</p>'}`,
-  });
-
-  const openQs = (canon.questions || []).filter(q => q.status !== 'answered');
-  chunk(openQs, 4).forEach((group, gi, all) => cards.push({
-    html: `<p class="kicker">For the cardiologist ${all.length > 1 ? `(${gi + 1}/${all.length})` : ''}</p>
-      <div style="display:grid;gap:.7em">${group.map(q => `<div class="qrow"><span>${esc(short(q.question, 140))}</span><button class="tick ${q.status === 'asked' ? 'done' : ''}" data-q="${esc(q.id)}" aria-label="Mark asked">${q.status === 'asked' ? 'Asked' : 'Ask'}</button></div>`).join('')}</div>`,
-    mount: card => card.querySelectorAll('[data-q]').forEach(b => b.onclick = async () => {
-      const next = b.classList.contains('done') ? 'open' : 'asked';
-      b.classList.toggle('done'); b.textContent = next === 'asked' ? 'Asked' : 'Ask';
-      const q = canon.questions.find(x => x.id === b.dataset.q); if (q) q.status = next;
-      await save('question', { id: b.dataset.q, status: next });
-    }),
-  }));
-
-  const gaps = (canon.gaps || []).filter(g => g.status !== 'closed');
-  chunk(gaps, 4).forEach((group, gi, all) => cards.push({
-    html: `<p class="kicker">Still unknown ${all.length > 1 ? `(${gi + 1}/${all.length})` : ''}</p>${list(group.map(g => short(g.gap, 120) + (g.stepToClose ? ` → ${short(g.stepToClose, 70)}` : '')))}`,
-  }));
-
-  cards.push({
-    html: `<p class="kicker">Share and settings</p>
-      <h3>Brief for his doctor</h3>
-      <p class="soft">One tap copies a clear summary: results, symptoms, check-ins and open questions. Paste it into a message or email.</p>
-      <div class="card-actions"><button class="pill" data-brief>Copy the brief</button></div>
-      <label class="meta" for="who">Your name, shown next to what you add</label>
-      <input id="who" maxlength="40" placeholder="First name" style="min-height:48px;border-radius:14px;border:1.5px solid var(--line);background:var(--bg);padding:0 14px">
-      <div class="card-actions" style="margin-top:auto"><button class="pill" data-out>Log out on this phone</button></div>`,
-    mount: card => {
-      const w = card.querySelector('#who'); w.value = store.get('who', ''); w.oninput = () => store.set('who', w.value.trim());
-      card.querySelector('[data-brief]').onclick = shareBrief;
-      card.querySelector('[data-out]').onclick = async () => { await fetch('/api/login', { method: 'DELETE' }); localStorage.clear(); location.reload(); };
-    },
-  });
-  deck(el, cards);
 }
 
 function briefText() {
