@@ -131,6 +131,7 @@ export default async function handler(req, res) {
     source = { kind: 'ai', model: out.model };
   } catch (e) {
     answer = fallbackAnswer(concern, rules.level, rules.reasons);
+    console.error(JSON.stringify({ askFallback: e.code || 'ERR', message: String(e.message).slice(0, 200) }));
     source = { kind: 'rules', reason: e.code === 'NO_AI' ? 'AI not configured' : 'AI unavailable: ' + e.message.slice(0, 120) };
   }
 
