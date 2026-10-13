@@ -88,7 +88,7 @@ function nudgeSheet(canon) {
 function planView(canon) {
   const plan = readPlan(canon.profile);
   const draw = () => {
-    root.innerHTML = `<header class="spoke-head"><button class="back" data-back aria-label="Back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg><span>Dad</span></button><h2>Care plan</h2></header>
+    root.innerHTML = `<header class="spoke-head"><button class="back" data-back aria-label="Back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg><span>Monitor</span></button><h2>Care plan</h2></header>
     <article class="card"><div class="fit plan">
       <p class="kicker">Habits · he sees one a day</p>
       <div class="plan-list">${plan.habits.map((h, i) => `<div class="plan-row"><button class="toggle ${h.on !== false ? 'on' : ''}" data-tog="${i}" aria-pressed="${h.on !== false}" aria-label="Turn ${esc(h.text)} ${h.on !== false ? 'off' : 'on'}"><i></i></button><span>${esc(h.text)}</span><button class="x" data-rm="${i}" aria-label="Remove">×</button></div>`).join('') || '<p class="soft">No habits yet.</p>'}</div>

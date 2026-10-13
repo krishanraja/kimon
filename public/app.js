@@ -543,7 +543,7 @@ function showCheckResult(verdict, r) {
     cls: 'level ' + lvl,
     html: `<p class="kicker">Check-in ${r.ok ? 'saved' : r.queued ? 'waiting to save' : ''}</p><h3>${esc(title)}</h3><p>${esc(body)}</p>
       <div class="who"><b>${esc(c.title)}</b>${c.lines.map(l => `<span>${linkify(l)}</span>`).join('')}</div>`,
-  }], { onDone: () => { buildCheck(); go('ask'); } });
+  }], { onDone: () => { buildCheck(); go('record'); } });
   if (r.ok) loadCanon();
 }
 
