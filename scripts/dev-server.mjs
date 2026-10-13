@@ -35,6 +35,7 @@ if (process.env.MOCK_SHEET) {
   };
   // MOCK_CANON_FILE: render a saved canon (keep real data outside the repo).
   if (process.env.MOCK_CANON_FILE) Object.assign(db, JSON.parse(fs.readFileSync(process.env.MOCK_CANON_FILE, 'utf8')));
+  globalThis.__mockDb = db;
   http.createServer((req, res) => {
     let body = ''; req.on('data', c => body += c); req.on('end', () => {
       const u = new URL(req.url, 'http://x');
@@ -49,7 +50,8 @@ if (process.env.MOCK_SHEET) {
       if (b.action === 'note') { db.notes.push({ tsUTC: ts, by: b.by, text: b.payload.text, tag: b.payload.tag || '' }); return send({ ok: true }); }
       if (b.action === 'checkin') { const a = b.payload.answers; const v = a.chest !== 'none' || a.breath === 'at-rest' ? 'Act-now' : (a.walking !== 'same' || a.energy !== 'normal') ? 'Changed' : 'Stable'; db.checkins.push({ tsMelb: ts, ...a, verdict: v, notes: b.payload.notes }); return send({ ok: true, verdict: v }); }
       if (b.action === 'profile') { db.profile[b.payload.key] = b.payload.value; return send({ ok: true }); }
-      if (b.action === 'question') { if (b.payload.id) { const q = db.questions.find(x => x.id === b.payload.id); if (q && b.payload.status) q.status = b.payload.status; } else db.questions.push({ id: 'Q' + (db.questions.length + 1), question: b.payload.question, status: 'open' }); return send({ ok: true }); }
+      if (b.action === 'question') { if (b.payload.id) { const q = db.questions.find(x => x.id === b.payload.id); if (q && b.payload.status) q.status = b.payload.status; if (q && b.payload.answer !== undefined) q.answer = b.payload.answer; return send({ ok: true, id: b.payload.id }); } const id = 'Q' + (db.questions.length + 1); db.questions.push({ id, question: b.payload.question, priority: b.payload.priority || '3', status: 'open', answer: '' }); return send({ ok: true, id }); }
+      if (b.action === 'gap') { const g = db.gaps.find(x => x.id === b.payload.id); if (g && b.payload.status) g.status = b.payload.status; return send({ ok: true }); }
       return send({ ok: true });
     });
   }).listen(MOCK_PORT);

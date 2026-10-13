@@ -70,9 +70,9 @@ export const CONTACTS = {
   urgent: {
     title: 'Get him seen today',
     lines: [
-      'Victorian Virtual ED: free video doctor 24/7, no appointment. vved.org.au',
-      'NURSE-ON-CALL 1300 60 60 24 (24/7, from within Victoria).',
-      'Or his GP today, asking for an urgent same-day appointment. If anything escalates, call 000.',
+      'Victorian Virtual ED: a free video call with a doctor, any time, no booking. vved.org.au',
+      'NURSE-ON-CALL 1300 60 60 24. Any time, from inside Victoria.',
+      'Or see his GP today. Ask for an urgent appointment. If things get worse, call 000.',
     ],
   },
   soon: {

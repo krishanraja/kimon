@@ -6,3 +6,4 @@ companion-app-data/
 user/files/
 *.pdf
 .DS_Store
+node_modules/

@@ -1,6 +1,7 @@
 import { triage, CONTACTS } from '/js/triage.js';
-import { mountRecord, refreshRecord, recordHome } from '/js/record.js';
-import { extract, resultCards, fmtDate, STAGES } from '/js/metrics.js';
+import { mountRecord, refreshRecord, recordHome, openSheet } from '/js/record.js';
+import { extract, resultCards, situation, fmtDate, STAGES } from '/js/metrics.js';
+import { plainTask } from '/js/record-model.js';
 
 /* ---------------- tiny helpers ---------------- */
 const $ = (s, el = document) => el.querySelector(s);
@@ -48,6 +49,7 @@ async function loadCanon() {
     store.set('canon', canon);
     setSync('ok', 'Up to date');
     refreshRecord();
+    if (!checkTouched) buildCheck();
   } catch (e) {
     if (e.status === 401) return;
     setSync(canon ? 'warn' : 'bad', canon ? 'Showing saved copy' : 'Offline');
@@ -179,6 +181,27 @@ function askShow(id) { askParts.forEach(p => { $('#' + p).hidden = p !== id; });
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let rec = null, listening = false, finalText = '';
 
+// Shared dictation for any text box. Returns stop(), or null if unsupported.
+function listen(onText, onState) {
+  if (!SR) { toast('Voice is not available in this browser. Type instead.'); return null; }
+  if (listening) stopListening(false);
+  const r = new SR(); r.lang = 'en-AU'; r.continuous = true; r.interimResults = true;
+  let fin = '', live = true;
+  r.onresult = e => {
+    let interim = '';
+    for (let k = e.resultIndex; k < e.results.length; k++) {
+      const t = e.results[k][0].transcript;
+      if (e.results[k].isFinal) fin += t + ' '; else interim += t;
+    }
+    onText((fin + interim).trim());
+  };
+  r.onerror = e => { if (e.error === 'not-allowed') toast('Microphone blocked. Allow it in browser settings, or type.'); };
+  r.onend = () => { if (live) { live = false; onState?.(false); } };
+  try { r.start(); } catch { return null; }
+  onState?.(true); navigator.vibrate?.(15);
+  return () => { if (live) { live = false; try { r.stop(); } catch { /* stopped */ } onState?.(false); } };
+}
+
 function startListening() {
   if (!SR) { toast('Voice is not available in this browser. Type instead.'); return openReview(''); }
   finalText = '';
@@ -232,16 +255,16 @@ $('#ideasClose').addEventListener('click', () => askShow('askIdle'));
 document.querySelectorAll('.idea').forEach(b => b.addEventListener('click', () => openReview(b.textContent)));
 $('#redo').addEventListener('click', () => { store.set('draft', ''); $('#live').textContent = ''; askShow('askIdle'); });
 
-const THINK = ['Reading his record', 'Checking the evidence', 'Weighing what matters', 'Writing it plainly'];
+const THINK = ['Reading his record', 'Checking the heart guide', 'Searching trusted medical sites', 'Reading what they say', 'Weighing what matters for him', 'Writing it plainly'];
 $('#askBtn').addEventListener('click', async () => {
   const concern = $('#concern').value.trim();
   if (concern.length < 3) { toast('Say or type the worry first'); return; }
   askShow('askThinking');
   const lvl = updateFlag('#thinkFlag');
   let k = 0; $('#thinkLine').textContent = THINK[0];
-  const timer = setInterval(() => { k = (k + 1) % THINK.length; $('#thinkLine').textContent = THINK[k]; }, 2600);
+  const timer = setInterval(() => { k = Math.min(k + 1, THINK.length - 1); $('#thinkLine').textContent = THINK[k]; }, 5000);
   try {
-    const res = await api('/api/ask', { method: 'POST', body: { concern, by: who() }, timeout: 65000 });
+    const res = await api('/api/ask', { method: 'POST', body: { concern, by: who() }, timeout: 170000 });
     store.set('draft', '');
     showAnswer(res);
     if (res.saved) loadCanon();
@@ -288,7 +311,7 @@ function showAnswer(res) {
     html: `<p class="kicker">Where this comes from</p>
       ${a.evidence.length ? `<ul>${a.evidence.map(e => `<li><span class="n">✓</span><span>${esc(e.point)}${e.url ? ` <a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(shortSrc(e.title))}</a>` : ' <small>general clinical knowledge</small>'}</span></li>`).join('')}</ul>` : ''}
       ${a.limits ? `<p class="meta">${esc(a.limits)}</p>` : ''}
-      <p class="meta">${res.source.kind === 'ai' ? 'Answered from his record and the Australian evidence guide.' : 'Rule-based answer (' + esc(res.source.reason) + ').'}
+      <p class="meta">${res.source.kind === 'ai' ? `Answered from his record, the Australian heart guide${res.source.searched ? ` and ${res.source.searched} trusted web pages` : ''}.` : 'Rule-based answer (' + esc(res.source.reason) + ').'}
       ${res.saved ? ' Saved to his record.' : res.recordError ? ' ' + esc(res.recordError) + '.' : ' Not saved.'}</p>`,
   });
   askShow('answerDeck');
@@ -313,8 +336,10 @@ const QS = [
   ['mood', 'How is he in himself?', [['ok', 'Okay', G], ['low', 'A bit low', A], ['very-low', 'Very low', R]]],
 ];
 
+let checkTouched = false;
 function buildCheck() {
-  const answers = {};
+  checkTouched = false;
+  const answers = { _gaps: {} };
   const cards = QS.map(([key, q, opts], n) => ({
     lockNext: true,
     html: `<p class="step">${n + 1} of ${QS.length}</p><h3>${esc(q)}</h3>
@@ -323,11 +348,26 @@ function buildCheck() {
       card.querySelectorAll('.choice').forEach(b => {
         if (answers[key] === b.dataset.v) { b.setAttribute('aria-pressed', 'true'); d.unlock(); }
         b.onclick = () => {
-          answers[key] = b.dataset.v;
+          answers[key] = b.dataset.v; checkTouched = true;
           card.querySelectorAll('.choice').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
           navigator.vibrate?.(10); d.unlock(); setTimeout(d.next, 260);
         };
       });
+    },
+  }));
+  // Tasks the family queued from His record > To do.
+  const queued = (canon?.gaps || []).filter(g => g.status === 'in-progress');
+  queued.forEach(g => cards.push({
+    html: `<p class="step">From your to-do</p><h3>Ask him: ${esc(plainTask(g))}</h3><label class="sr" for="gap-${esc(g.id)}">His answer</label><textarea id="gap-${esc(g.id)}" maxlength="1000" placeholder="What did he say? Leave blank if you didn't get to it."></textarea><div class="row"><button class="micbtn" type="button" data-mic aria-pressed="false"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg><span>Speak</span></button></div>`,
+    mount: card => {
+      const t = card.querySelector('textarea'), b = card.querySelector('[data-mic]');
+      t.value = answers._gaps[g.id] || ''; t.oninput = () => { answers._gaps[g.id] = t.value; };
+      let stop = null;
+      b.onclick = () => {
+        if (stop) { stop(); return; }
+        const base = t.value ? t.value.trim() + ' ' : '';
+        stop = listen(x => { t.value = base + x; answers._gaps[g.id] = t.value; }, on => { b.setAttribute('aria-pressed', String(on)); b.querySelector('span').textContent = on ? 'Stop' : 'Speak'; if (!on) stop = null; });
+      };
     },
   }));
   cards.push({
@@ -336,10 +376,16 @@ function buildCheck() {
   });
   const d = deck($('#checkDeck'), cards, {
     onDone: async () => {
-      const { _notes, ...a } = answers;
+      const { _notes, _gaps, ...a } = answers;
       if (Object.keys(a).length < QS.length) { toast('A question was skipped'); return; }
       const local = (a.chest !== 'none' || a.breath === 'at-rest') ? 'Act-now' : null;
       const r = await save('checkin', { answers: a, notes: _notes || '' });
+      for (const [id, text] of Object.entries(_gaps)) {
+        const g = (canon?.gaps || []).find(x => x.id === id);
+        if (!g || !text.trim()) continue;
+        await save('note', { text: `FOUND OUT (${id} ${plainTask(g)}): ${text.trim()}`, tag: 'found-out' });
+        await save('gap', { id, status: 'closed' });
+      }
       const verdict = r.ok ? r.out.verdict : (local || 'Saved offline');
       showCheckResult(verdict, r);
     },
@@ -366,27 +412,45 @@ function showCheckResult(verdict, r) {
 /* ---------------- RECORD ---------------- */
 function buildRecord() {
   mountRecord($('#rec'), {
-    canon: () => canon, session: () => session, save, toast, fit,
+    canon: () => canon, session: () => session, save, toast, fit, listen,
     openAsk: text => { go('ask'); openReview(text); },
+    onTasksChanged: () => { store.set('canon', canon); if (!checkTouched) buildCheck(); },
   });
 }
 
 function briefText() {
-  const c = canon || {};
-  const L = [];
-  L.push('PATIENT SUMMARY (prepared by family, from his records and notes)');
-  L.push('Generated ' + new Date().toLocaleString('en-AU', { timeZone: 'Australia/Melbourne' }) + ' Melbourne time', '');
-  const p = c.profile || {};
-  ['Age', 'age', 'Sex', 'GP', 'gp'].forEach(k => p[k] && L.push(`${k}: ${p[k]}`));
-  if ((c.conditions || []).length) { L.push('', 'CONDITIONS'); c.conditions.forEach(x => L.push(`- ${x.name} (${x.status})${x.notes ? ': ' + x.notes : ''}`)); }
-  L.push('', 'MEDICATIONS'); (c.medications || []).length ? c.medications.forEach(m => L.push(`- ${m.name} ${m.dose} ${m.frequency} (${m.status})`)) : L.push('- none recorded');
-  if ((c.testResults || []).length) { L.push('', 'RESULTS'); c.testResults.forEach(t => L.push(`- ${t.date} ${t.test}: ${t.result}`)); }
-  const sym = (c.notes || []).filter(n => /concern|symptom/i.test(n.tag)).slice(-6);
-  if (sym.length) { L.push('', 'SYMPTOMS AND CONCERNS REPORTED'); sym.forEach(n => L.push(`- ${String(n.tsUTC).slice(0, 10)}: ${String(n.text).replace(/\n?(URGENCY|ANSWER):.*$/gs, '').replace(/^CONCERN:\s*/i, '')}`)); }
+  const c = canon || {}, p = c.profile || {};
+  const m = extract(c.testResults);
+  const L = ['SUMMARY FOR HIS DOCTOR (prepared by family from his reports and our notes)',
+    `Prepared ${fmtDate(new Date().toISOString(), { year: true })}`, ''];
+  const sit = situation({ m, medications: c.medications, notes: c.notes });
+  if (sit) L.push(sit, '');
+  if (p.age) L.push(`Age ${p.age}${p.sex ? ', ' + p.sex : ''}`);
+  L.push(`Where things are: ${p.pathway_stage || 'Referred to cardiology (unconfirmed)'}. ${p.next_appointment ? 'Cardiology appointment ' + fmtDate(p.next_appointment, { year: true }) + '.' : 'No cardiology appointment date yet.'}`);
+  const rc = resultCards(m);
+  if (rc.length) {
+    L.push('', 'KEY RESULTS');
+    for (const r of rc) {
+      if (r.missing) { L.push(`- ${r.def.label}: not measured`); continue; }
+      let line = `- ${r.def.label}: ${r.value}${r.def.unit ? ' ' + r.def.unit : ''} (${r.verdict.toLowerCase()}), ${fmtDate(r.hit.date, { year: true })}`;
+      if (r.key === 'cac' && r.hit.vessels) line += `. ${Object.entries(r.hit.vessels).map(([k, v]) => `${k} ${v}`).join(', ')}${r.hit.percentile ? `; ${r.hit.percentile} percentile` : ''}`;
+      if (r.key === 'ldl') line += `. Total ${m.total?.value ?? '?'}, non-HDL ${m.nonhdl?.value ?? '?'}, trig ${m.trig?.value ?? '?'}, HDL ${m.hdl?.value ?? '?'}`;
+      L.push(line);
+    }
+  }
+  L.push('', 'MEDICATIONS'); (c.medications || []).length ? c.medications.forEach(x => L.push(`- ${x.name} ${x.dose} ${x.frequency} (${x.status})`)) : L.push('- none recorded');
+  const notes = (c.notes || []).filter(n => n.by !== 'claude-test');
+  const sym = notes.filter(n => /symptom|found-out/i.test(n.tag)).slice(-6);
+  if (sym.length) { L.push('', 'WHAT HE HAS TOLD US'); sym.forEach(n => L.push(`- ${fmtDate(n.tsUTC)}: ${String(n.text).replace(/^FOUND OUT[^:]*:\s*/i, '')}`)); }
   const ci = (c.checkins || []).slice(-5);
-  if (ci.length) { L.push('', 'RECENT CHECK-INS'); ci.forEach(x => L.push(`- ${x.tsMelb}: chest ${x.chest}, breath ${x.breath}, walking ${x.walking}, energy ${x.energy}, tablets ${x.tablets}, mood ${x.mood} => ${x.verdict}${x.notes ? '. ' + x.notes : ''}`)); }
-  const q = (c.questions || []).filter(x => x.status !== 'answered');
-  if (q.length) { L.push('', 'QUESTIONS WE WOULD LIKE ANSWERED'); q.forEach((x, n) => L.push(`${n + 1}. ${x.question}`)); }
+  if (ci.length) { L.push('', 'RECENT CHECK-INS'); ci.forEach(x => L.push(`- ${fmtDate(x.tsUTC || x.tsMelb)}: ${x.verdict}. Chest ${x.chest}, breath ${x.breath}, walking ${x.walking}, energy ${x.energy}${x.notes ? '. ' + x.notes : ''}`)); }
+  const open = (c.gaps || []).filter(g => g.status !== 'closed');
+  if (open.length) { L.push('', 'STILL UNKNOWN'); open.forEach(g => L.push(`- ${plainTask(g)}`)); }
+  const qs = c.questions || [];
+  const ans = qs.filter(q => q.status === 'answered');
+  if (ans.length) { L.push('', 'ANSWERS SO FAR'); ans.forEach(q => L.push(`- ${q.question} ${q.answer}`)); }
+  const q = qs.filter(x => x.status !== 'answered').sort((a, b) => (+a.priority || 9) - (+b.priority || 9));
+  if (q.length) { L.push('', 'OUR QUESTIONS'); q.forEach((x, n) => L.push(`${n + 1}. ${x.question}`)); }
   return L.join('\n');
 }
 async function shareBrief() {
@@ -396,5 +460,16 @@ async function shareBrief() {
     await navigator.clipboard.writeText(text); toast('Brief copied. Paste it into a message.');
   } catch (e) { if (e.name !== 'AbortError') toast('Could not copy on this browser'); }
 }
+
+$('#shareBtn').addEventListener('click', shareBrief);
+$('#gearBtn').addEventListener('click', () => openSheet(`
+  <p class="kicker">Settings</p>
+  <label class="kicker" for="whoName">Your name, shown next to what you add</label>
+  <input id="whoName" maxlength="40" placeholder="First name">
+  <button class="btn" data-out>Log out on this phone</button>
+  <button class="btn primary" data-close>Done</button>`, sheet => {
+  const w = sheet.querySelector('#whoName'); w.value = store.get('who', ''); w.oninput = () => store.set('who', w.value.trim());
+  sheet.querySelector('[data-out]').onclick = async () => { await fetch('/api/login', { method: 'DELETE' }); localStorage.clear(); location.reload(); };
+}));
 
 boot();

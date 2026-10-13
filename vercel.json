@@ -3,7 +3,7 @@
   "cleanUrls": true,
   "functions": {
     "api/ask.js": {
-      "maxDuration": 60,
+      "maxDuration": 180,
       "includeFiles": "knowledge/**"
     }
   },
