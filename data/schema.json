@@ -1,0 +1,126 @@
+{
+  "_comment": "Canon sheet schema. NO patient data - live values live only in the private Google Sheet.",
+  "tabs": {
+    "Changelog": {
+      "headers": [
+        "TimestampUTC",
+        "Tab",
+        "Key",
+        "OldValue",
+        "NewValue",
+        "By",
+        "Source"
+      ],
+      "mode": "append",
+      "seed_rows": 0
+    },
+    "CheckIns": {
+      "headers": [
+        "TimestampUTC",
+        "TimestampMelb",
+        "By",
+        "ChestDiscomfort",
+        "Breathlessness",
+        "WalkingDistance",
+        "Energy",
+        "Tablets",
+        "Mood",
+        "Verdict",
+        "Notes"
+      ],
+      "mode": "append",
+      "seed_rows": 0
+    },
+    "Conditions": {
+      "headers": [
+        "Condition",
+        "Status",
+        "Since",
+        "Notes",
+        "Source",
+        "UpdatedAt"
+      ],
+      "mode": "overwrite",
+      "seed_rows": 4
+    },
+    "KnowledgeGaps": {
+      "headers": [
+        "ID",
+        "Gap",
+        "WhatAnswersIt",
+        "StepToClose",
+        "Status",
+        "UpdatedAt"
+      ],
+      "mode": "overwrite",
+      "seed_rows": 8
+    },
+    "Medications": {
+      "headers": [
+        "Name",
+        "Dose",
+        "Frequency",
+        "Started",
+        "Status",
+        "Source",
+        "UpdatedAt"
+      ],
+      "mode": "overwrite",
+      "seed_rows": 0
+    },
+    "Meta": {
+      "headers": [
+        "Key",
+        "Value"
+      ],
+      "mode": "overwrite",
+      "seed_rows": 7
+    },
+    "Notes": {
+      "headers": [
+        "TimestampUTC",
+        "By",
+        "Text",
+        "Tag"
+      ],
+      "mode": "append",
+      "seed_rows": 0
+    },
+    "Profile": {
+      "headers": [
+        "Key",
+        "Value",
+        "Source",
+        "UpdatedAt",
+        "Verified"
+      ],
+      "mode": "overwrite",
+      "seed_rows": 12
+    },
+    "Questions": {
+      "headers": [
+        "ID",
+        "Question",
+        "AskWhom",
+        "Priority",
+        "Status",
+        "Answer",
+        "UpdatedAt"
+      ],
+      "mode": "overwrite",
+      "seed_rows": 9
+    },
+    "TestResults": {
+      "headers": [
+        "Date",
+        "Test",
+        "Result",
+        "Lab",
+        "Notes",
+        "Source"
+      ],
+      "mode": "append",
+      "seed_rows": 5
+    }
+  }
+}

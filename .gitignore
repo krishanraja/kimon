@@ -1,0 +1,8 @@
+# Secrets and patient data — NEVER commit
+.env
+*.secret
+*secret*
+companion-app-data/
+user/files/
+*.pdf
+.DS_Store
