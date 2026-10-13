@@ -197,7 +197,11 @@ function listen(onText, onState) {
     async function stop() {
       if (done || !handle) return; done = true;
       onState?.('busy');
-      try { const text = await transcribeBlob(await handle.stop()); if (text) onText(text); else toast("Didn't catch that. Try again."); }
+      try {
+        const blob = await handle.stop();
+        if (handle.silent()) toast("I didn't hear anything. Try again, closer to the phone.");
+        else { const text = await transcribeBlob(blob); if (text) onText(text); else toast("Didn't catch that. Try again."); }
+      }
       catch { toast("Couldn't turn that into words. Try again, or type."); }
       onState?.(false);
     }
@@ -251,7 +255,9 @@ async function stopListening(toReview) {
   const h = orbRec; orbRec = null;
   orbState('busy'); $('#live').textContent = '';
   try {
-    const text = await transcribeBlob(await h.stop());
+    const blob = await h.stop();
+    if (h.silent()) { orbState('idle'); if (toReview) toast("I didn't hear anything. Try again, closer to the phone.", 4000); return; }
+    const text = await transcribeBlob(blob);
     orbState('idle');
     if (!toReview) return;
     if (text) openReview(text); else { toast("Didn't catch that. Try again, a little closer to the phone."); }

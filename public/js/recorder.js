@@ -15,16 +15,20 @@ export async function startRecording({ onLevel, onAutoStop } = {}) {
   const chunks = [];
   rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
 
-  let raf = 0, ctx = null;
+  let raf = 0, ctx = null, peak = 0, metered = false;
   try {
     ctx = new (window.AudioContext || window.webkitAudioContext)();
+    ctx.resume?.().catch(() => {});
     const an = ctx.createAnalyser(); an.fftSize = 512;
     ctx.createMediaStreamSource(stream).connect(an);
     const buf = new Uint8Array(an.fftSize);
     const tick = () => {
       an.getByteTimeDomainData(buf);
       let sum = 0; for (const v of buf) { const x = (v - 128) / 128; sum += x * x; }
-      onLevel?.(Math.min(1, Math.sqrt(sum / buf.length) * 5));
+      const lvl = Math.min(1, Math.sqrt(sum / buf.length) * 5); peak = Math.max(peak, lvl);
+      // Only trust the meter if the audio engine is actually running.
+      if (ctx.state === 'running') metered = true;
+      onLevel?.(lvl);
       raf = requestAnimationFrame(tick);
     };
     tick();
@@ -37,6 +41,8 @@ export async function startRecording({ onLevel, onAutoStop } = {}) {
   const cleanup = () => { clearTimeout(limit); cancelAnimationFrame(raf); ctx?.close?.(); stream.getTracks().forEach(t => t.stop()); };
   return {
     elapsed: () => Date.now() - t0,
+    // Nothing louder than room noise: probably no one spoke.
+    silent: () => metered && peak < 0.04,
     stop() {
       if (stopped) return stopped;
       stopped = new Promise(resolve => {

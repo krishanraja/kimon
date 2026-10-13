@@ -5,16 +5,26 @@ import { requireAuth } from '../lib/auth.js';
 
 const GATEWAY_MODELS = ['openai/gpt-4o-transcribe', 'openai/whisper-1'];
 const OPENAI_MODELS = ['gpt-4o-transcribe', 'whisper-1'];
-// Words the family is likely to say; biases spelling, never invents content.
-const VOCAB = 'A family member in Australia talking about their dad Kimon and his heart health: coronary artery calcium score, Agatston, plaque, cardiologist, GP, CTCA, stress echo, angiogram, ECG, statin, atorvastatin, rosuvastatin, ezetimibe, aspirin, LDL, HDL, cholesterol, triglycerides, blood pressure, palpitations, breathless, dizzy, angina, HbA1c, eGFR, Medicare, PBS, healthdirect, Melbourne.';
+// A short natural-language hint biases spelling of likely words. Kept short,
+// because on silence or noise the model can echo a hint back as if spoken.
+const VOCAB = "Talking about Dad's heart: his calcium score, the cardiologist, statins, LDL cholesterol, CTCA scan, palpitations and blood pressure.";
+const norm = t => String(t).toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean);
+const HINT_WORDS = new Set(norm(VOCAB));
+// True when the output is mostly the hint itself rather than real speech.
+export function looksLikeHintEcho(text) {
+  const w = norm(text);
+  if (!w.length) return false;
+  const inHint = w.filter(x => HINT_WORDS.has(x)).length / w.length;
+  return (w.length >= 3 && inHint >= 0.85) || String(text).includes(VOCAB.slice(0, 40));
+}
 const EXT = { 'audio/webm': 'webm', 'audio/ogg': 'ogg', 'audio/mp4': 'mp4', 'audio/m4a': 'm4a', 'audio/x-m4a': 'm4a', 'audio/aac': 'm4a', 'audio/mpeg': 'mp3', 'audio/wav': 'wav', 'audio/x-wav': 'wav' };
 
-async function openaiTranscribe(model, audio, mediaType) {
+async function openaiTranscribe(model, audio, mediaType, useHint = true) {
   const form = new FormData();
   form.append('file', new Blob([Buffer.from(audio, 'base64')], { type: mediaType }), `speech.${EXT[mediaType] || 'webm'}`);
   form.append('model', model);
   form.append('language', 'en');
-  form.append('prompt', VOCAB);
+  if (useHint) form.append('prompt', VOCAB);
   form.append('response_format', 'json');
   const r = await fetch('https://api.openai.com/v1/audio/transcriptions', {
     method: 'POST', signal: AbortSignal.timeout(45000),
@@ -63,7 +73,12 @@ export default async function handler(req, res) {
   // Providers want the plain type ("audio/webm"), not codec parameters.
   const type = String(mediaType || 'audio/webm').split(';')[0].trim();
   const attempts = [
-    ...(process.env.OPENAI_API_KEY ? OPENAI_MODELS.map(m => ['openai', m, () => openaiTranscribe(m, audio, type)]) : []),
+    ...(process.env.OPENAI_API_KEY ? OPENAI_MODELS.map(m => ['openai', m, async () => {
+      const t = await openaiTranscribe(m, audio, type);
+      if (!looksLikeHintEcho(t)) return t;
+      const again = await openaiTranscribe(m, audio, type, false); // retry without the hint
+      return looksLikeHintEcho(again) ? '' : again;
+    }]) : []),
     ...(token(req) ? GATEWAY_MODELS.map(m => ['gateway', m, () => transcribe(m, audio, type, req)]) : []),
   ];
   let lastErr;
