@@ -1,44 +1,66 @@
-# Kimon — data-backed medical copilot
+# Beside Kimon: evidence-backed cardiac care companion
 
-A phone-only companion web app for a daughter supporting her father (67,
-Melbourne) through a cardiac diagnosis and cardiology referral — from another
-country. The **Google Sheet is the single source of truth**; the app reads it
-on load and every interaction writes back to it.
+A phone-first web app for a family supporting their father (67, Melbourne)
+through a severe coronary artery calcification finding and the cardiology
+pathway, mostly from overseas. Live at **https://laurenthermos.com**
+(Vercel project `kimon`), behind a family access code.
+
+## What it does
+
+- **Ask**: tap the mic (or type), voice a worry, get an answer on the spot:
+  urgency, what is likely going on, what to do now, what to watch for, exact
+  questions for his doctor, and the evidence behind it. Grounded in his live
+  record from the sheet plus `knowledge/cac-evidence-corpus.md`. Every
+  concern and answer is logged to the sheet (`Notes`, tag `concern`).
+- **Red flags never wait for AI**: `public/js/triage.js` is a deterministic
+  rule set (heart attack, stroke, collapse, breathless at rest...) that runs
+  in the browser as she types and again on the server. The model can raise
+  urgency, never lower it.
+- **Check-in**: six one-tap questions to ask him on a call, verdict computed
+  by the sheet API (Stable / Changed / Act-now).
+- **His record**: key numbers, recent concerns, cardiologist questions (tap to
+  mark asked), knowledge gaps, and a one-tap brief to paste to his doctor.
+- No scrolling anywhere: every screen is a card deck that fits the phone.
 
 ## Architecture
 
 ```
-Wife's phone (static web app, shareable link)
-        |  HTTPS (secret-gated JSON)
-        v
-Apps Script Web App (bound to the sheet, Execute as owner, Anyone w/ secret)
-        |  SpreadsheetApp
-        v
-Google Sheet "Kimon Thermos - Medical"  <-- CANON
-  10 tabs: Meta, Profile, Conditions, Medications, TestResults,
-           CheckIns, Questions, KnowledgeGaps, Notes, Changelog
+Phone (public/: static, no build)  --cookie-->  Vercel functions (api/)
+                                                 |  login: ACCESS_CODE -> signed HttpOnly cookie (1 year)
+                                                 |  canon/write: proxy with SHEET_API_SECRET (server only)
+                                                 |  ask: triage -> model (AI Gateway or Anthropic) -> log
+                                                 v
+                              Apps Script Web App (apps-script/Code.gs)
+                                                 v
+                              Google Sheet "Kimon Thermos - Medical"  <-- CANON
 ```
 
-- **Overwrite** (changelogged): Profile, Conditions, Medications, Questions,
-  KnowledgeGaps — every overwrite logs old→new in Changelog.
-- **Append-only**: TestResults, CheckIns, Notes, Changelog.
-- The app renders instantly from a baked-in snapshot, then the sheet overwrites
-  it when the API answers. Writes show saved/failed state; failures queue.
+The sheet is the single source of truth. The browser never sees the sheet
+secret; the previous Muse build baked it into the page, this one does not.
 
-## Repo layout
+## Vercel environment variables
 
-- `api/apps-script/` — the API source (`Code.gs`, `appsscript.json`).
-  Deploy: paste into the sheet's bound script (Extensions → Apps Script),
-  Deploy → New deployment → Web app → Execute as: Me, Who has access: Anyone.
-- `data/schema.json` — sheet schema (headers + modes). No patient data.
-- `docs/API.md` — full API contract.
-- `web/` — the app itself lives as a Muse web artifact (slug `companion-app`);
-  see `web/README.md` for how to export it.
+| Name | Required | Notes |
+|---|---|---|
+| `SESSION_SECRET` | yes | 32+ random chars; signs the login cookie |
+| `SHEET_API_SECRET` | yes | the `APP_SECRET` value in the deployed Apps Script |
+| `ACCESS_CODE` | no | defaults to `kimon`; changing it logs everyone out |
+| `SHEET_API_URL` | no | defaults to the live Apps Script `/exec` URL |
+| `ANTHROPIC_API_KEY` | no | if set, Ask calls Anthropic directly |
+| `AI_GATEWAY_API_KEY` | no | otherwise Vercel AI Gateway via the deployment's OIDC token |
 
-## Privacy — read this
+With no AI reachable, Ask still answers from the triage rules and care guide.
 
-This repo is **public**. NEVER commit:
-- patient PII (name, DOB, Medicare, address, phone) — lives only in the sheet
-- the API secret — lives only in the deployed Apps Script project and the
-  server-side config; it is injected at deploy time, never stored here
-- the contents of the medical reports
+## Develop
+
+```
+npm test                                   # triage rules
+MOCK_SHEET=1 node scripts/dev-server.mjs   # app + fake sheet on :3000, code "kimon"
+```
+
+## Privacy: this repo is public
+
+NEVER commit patient PII, the API secret, or the medical reports. Patient data
+lives only in the sheet and is fetched at runtime behind the access code.
+Profile fields like Medicare, address, phone and DOB are stripped before
+anything is sent to the model.

@@ -1,4 +1,18 @@
-# HANDOVER — for the next AI taking over
+# HANDOVER: for the next AI taking over
+
+## 2026-10-13 update (supersedes "BROKEN" items below)
+- App rebuilt in this repo (`public/`, `api/`) and deployed on Vercel at
+  laurenthermos.com with access code login + 1-year cookie. Muse artifact is
+  retired, which also retires the Android viewer and nav-overlap issues.
+- Sheet secret now lives only in Vercel env `SHEET_API_SECRET` (server side).
+- New: Ask (voice concern, evidence-grounded answer, logged to Notes tag
+  `concern`), deterministic red-flag triage, one-tap check-ins, record deck,
+  doctor brief. See README.md.
+- Apps Script source moved from `api/apps-script/` to `apps-script/` (Vercel
+  treats `api/` as functions). The deployed script is unchanged.
+
+---
+
 
 Date: 2026-10-13. Previous agent built all of the below; user asked to move it
 to this repo and continue here.
