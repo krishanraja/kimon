@@ -2,6 +2,7 @@ import { triage, CONTACTS } from '/js/triage.js';
 import { mountRecord, refreshRecord, recordHome, openSheet } from '/js/record.js';
 import { extract, resultCards, situation, fmtDate, STAGES } from '/js/metrics.js';
 import { plainTask } from '/js/record-model.js';
+import { resultsText } from '/js/speech.js';
 
 /* ---------------- tiny helpers ---------------- */
 const $ = (s, el = document) => el.querySelector(s);
@@ -179,22 +180,15 @@ const askParts = ['askIdle', 'askReview', 'askThinking', 'ideasSheet', 'answerDe
 function askShow(id) { askParts.forEach(p => { $('#' + p).hidden = p !== id; }); }
 
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let rec = null, listening = false, finalText = '';
+let rec = null, listening = false;
 
 // Shared dictation for any text box. Returns stop(), or null if unsupported.
 function listen(onText, onState) {
   if (!SR) { toast('Voice is not available in this browser. Type instead.'); return null; }
   if (listening) stopListening(false);
   const r = new SR(); r.lang = 'en-AU'; r.continuous = true; r.interimResults = true;
-  let fin = '', live = true;
-  r.onresult = e => {
-    let interim = '';
-    for (let k = e.resultIndex; k < e.results.length; k++) {
-      const t = e.results[k][0].transcript;
-      if (e.results[k].isFinal) fin += t + ' '; else interim += t;
-    }
-    onText((fin + interim).trim());
-  };
+  let live = true;
+  r.onresult = e => onText(resultsText(e));
   r.onerror = e => { if (e.error === 'not-allowed') toast('Microphone blocked. Allow it in browser settings, or type.'); };
   r.onend = () => { if (live) { live = false; onState?.(false); } };
   try { r.start(); } catch { return null; }
@@ -204,16 +198,8 @@ function listen(onText, onState) {
 
 function startListening() {
   if (!SR) { toast('Voice is not available in this browser. Type instead.'); return openReview(''); }
-  finalText = '';
   rec = new SR(); rec.lang = 'en-AU'; rec.continuous = true; rec.interimResults = true;
-  rec.onresult = e => {
-    let interim = '';
-    for (let k = e.resultIndex; k < e.results.length; k++) {
-      const t = e.results[k][0].transcript;
-      if (e.results[k].isFinal) finalText += t + ' '; else interim += t;
-    }
-    $('#live').textContent = (finalText + interim).trim();
-  };
+  rec.onresult = e => { $('#live').textContent = resultsText(e); };
   rec.onerror = e => { if (e.error === 'not-allowed') toast('Microphone blocked. Allow it in browser settings, or type.'); stopListening(true); };
   rec.onend = () => { if (listening) stopListening(true); };
   try { rec.start(); } catch { return; }
