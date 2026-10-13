@@ -10,6 +10,11 @@ const OPENAI_MODELS = ['gpt-4o-transcribe', 'whisper-1'];
 const VOCAB = "Talking about Dad's heart: his calcium score, the cardiologist, statins, LDL cholesterol, CTCA scan, palpitations and blood pressure.";
 const norm = t => String(t).toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean);
 const HINT_WORDS = new Set(norm(VOCAB));
+// Non-speech can come back as stray symbols or another script; treat as nothing.
+export function plausible(text) {
+  const t = String(text || '').trim();
+  return (t.match(/[a-z]/gi) || []).length >= 2 ? t : '';
+}
 // True when the output is mostly the hint itself rather than real speech.
 export function looksLikeHintEcho(text) {
   const w = norm(text);
@@ -84,7 +89,7 @@ export default async function handler(req, res) {
   let lastErr;
   for (const [via, model, run] of attempts) {
     try {
-      const text = await run();
+      const text = plausible(await run());
       console.log(JSON.stringify({ transcribe: model, via, type, chars: text.length }));
       return res.status(200).json({ ok: true, text, model, via });
     } catch (e) {

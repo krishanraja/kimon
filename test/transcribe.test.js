@@ -11,3 +11,9 @@ test('real questions that use the same words pass', () => {
   assert.equal(looksLikeHintEcho('He gets dizzy when he stands up and his heart races'), false);
   assert.equal(looksLikeHintEcho('Should he be on a statin?'), false);
 });
+import { plausible } from '../api/transcribe.js';
+test('junk from non-speech becomes empty', () => {
+  assert.equal(plausible('富岡。'), '');
+  assert.equal(plausible('...'), '');
+  assert.equal(plausible('Is he okay?'), 'Is he okay?');
+});
