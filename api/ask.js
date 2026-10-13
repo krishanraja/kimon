@@ -22,7 +22,7 @@ function patientContext(canon) {
     '## Medications', rows(canon.medications, 30, m => `- ${m.name} ${m.dose} ${m.frequency} [${m.status}] started ${m.started}`),
     '## Test results', rows(canon.testResults, 60, t => `- ${t.date} ${t.test}: ${t.result}${t.notes ? ' (' + t.notes + ')' : ''}`),
     '## Recent check-ins (oldest first)', rows(canon.checkins, 8, c => `- ${c.tsMelb}: chest=${c.chest} breath=${c.breath} walking=${c.walking} energy=${c.energy} tablets=${c.tablets} mood=${c.mood} -> ${c.verdict}. ${c.notes}`),
-    '## Recent notes and earlier concerns (oldest first)', rows((canon.notes || []).filter(n => n.by !== 'claude-test'), 15, n => `- ${String(n.tsUTC).slice(0, 10)} [${n.tag}] ${String(n.text).replace(/\nRID:[\s\S]*$/, '')}`),
+    '## Recent notes and earlier concerns (oldest first)', rows((canon.notes || []).filter(n => n.by !== 'claude-test' && n.tag !== 'nudge-seen'), 20, n => `- ${String(n.tsUTC).slice(0, 10)} [${n.tag}] ${String(n.text).replace(/\n(RID|DATA):[\s\S]*$/, '')}`),
     '## Open questions for clinicians', rows((canon.questions || []).filter(q => q.status !== 'answered'), 20, q => `- ${q.id} (${q.askWhom}, p${q.priority}): ${q.question}`),
     '## Answered questions', rows((canon.questions || []).filter(q => q.status === 'answered'), 20, q => `- ${q.question} => ${q.answer}`),
     '## Knowledge gaps', rows(canon.gaps, 20, g => `- ${g.id} [${g.status}] ${g.gap}. Closed by: ${g.whatAnswersIt}`),

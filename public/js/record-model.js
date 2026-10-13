@@ -95,6 +95,14 @@ export function historyEvents(canon) {
       const prev = concerns.get(q);
       if (prev) { prev.count++; if (n.tsUTC > prev.ts) Object.assign(prev, { key: k, ts: n.tsUTC, urgency, answer: firstSentence(answer) }); }
       else concerns.set(q, { key: k, ts: n.tsUTC, kind: 'concern', title: 'You asked', detail: clip(q, 90), concern: q, urgency, answer: firstSentence(answer), count: 1 });
+    } else if (/^(habit|meds-taken|nudge-seen)$/.test(n.tag)) {
+      continue; // routine taps; summarised on the Dad tab instead
+    } else if (n.tag === 'symptom-log' || n.tag === 'body-check') {
+      ev.push({ key: k, ts: n.tsUTC, kind: 'symptom', title: n.tag === 'body-check' ? 'Dad did his body check' : 'Dad logged a symptom', detail: clip(text.split('\nDATA: ')[0].replace(/^(SYMPTOM|BODY CHECK):\s*/, ''), 90) });
+    } else if (n.tag === 'kimon-says') {
+      ev.push({ key: k, ts: n.tsUTC, kind: 'note', title: 'Dad said', detail: clip(text.replace(/^KIMON SAYS:\s*/, ''), 90) });
+    } else if (n.tag === 'nudge') {
+      ev.push({ key: k, ts: n.tsUTC, kind: 'note', title: `Nudge from ${n.by}`, detail: clip(text.replace(/^NUDGE:\s*/, ''), 90) });
     } else if (/symptom/i.test(n.tag)) {
       ev.push({ key: k, ts: n.tsUTC, kind: 'symptom', title: 'Symptoms reported', detail: firstSentence(text) });
     } else if (/found-out/i.test(n.tag)) {

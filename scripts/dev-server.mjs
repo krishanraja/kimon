@@ -72,6 +72,7 @@ http.createServer(async (req, res) => {
     return;
   }
   let p = path.join(root, 'public', u.pathname === '/' ? 'index.html' : u.pathname);
+  if (!path.extname(p) && fs.existsSync(p + '.html')) p += '.html'; // Vercel cleanUrls
   if (!p.startsWith(path.join(root, 'public')) || !fs.existsSync(p)) { res.statusCode = 404; return res.end('not found'); }
   res.setHeader('content-type', TYPES[path.extname(p)] || 'application/octet-stream');
   fs.createReadStream(p).pipe(res);

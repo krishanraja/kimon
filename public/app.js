@@ -2,6 +2,7 @@ import { triage, CONTACTS } from '/js/triage.js';
 import { mountRecord, refreshRecord, recordHome, openSheet } from '/js/record.js';
 import { extract, resultCards, situation, fmtDate, STAGES } from '/js/metrics.js';
 import { plainTask } from '/js/record-model.js';
+import { mountDad, refreshDad, dadHome } from '/js/dad.js';
 import { resultsText } from '/js/speech.js';
 import { canRecord, startRecording, transcribeBlob, fmtTime } from '/js/recorder.js';
 
@@ -50,7 +51,7 @@ async function loadCanon() {
     canon = await api('/api/canon', { timeout: 14000 });
     store.set('canon', canon);
     setSync('ok', 'Up to date');
-    refreshRecord();
+    refreshRecord(); refreshDad();
     if (!checkTouched) buildCheck();
   } catch (e) {
     if (e.status === 401) return;
@@ -93,6 +94,8 @@ $('#loginForm').addEventListener('submit', async e => {
     const r = await fetch('/api/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: $('#code').value }) });
     if (!r.ok) { msg.textContent = 'That code is not right'; $('#code').select(); return; }
     $('#code').value = '';
+    const j = await r.json().catch(() => ({}));
+    if (j.role === 'kimon') return location.replace('/me');
     boot();
   } catch { msg.textContent = 'No connection. Try again.'; }
 });
@@ -102,12 +105,13 @@ async function boot() {
     const r = await fetch('/api/session', { credentials: 'same-origin', signal: AbortSignal.timeout(10000) });
     if (r.status === 401) return showLogin();
     session = await r.json();
+    if (session.role === 'kimon') return location.replace('/me');
   } catch {
     if (!canon) return showLogin(); // never seen data on this phone; need the network once
     session = { sheetConfigured: true };
   }
   $('#login').hidden = true; $('#app').hidden = false;
-  buildCheck(); buildRecord();
+  buildCheck(); buildRecord(); buildDad();
   await flushQueue();
   loadCanon();
   checkPendingAsk();
@@ -116,6 +120,7 @@ async function boot() {
 /* ---------------- tabs ---------------- */
 document.querySelectorAll('.nav-btn').forEach(b => b.addEventListener('click', () => {
   if (b.dataset.go === 'record' && b.hasAttribute('aria-current')) recordHome();
+  if (b.dataset.go === 'dad' && b.hasAttribute('aria-current')) dadHome();
   go(b.dataset.go);
 }));
 function go(name) {
@@ -543,6 +548,10 @@ function showCheckResult(verdict, r) {
 }
 
 /* ---------------- RECORD ---------------- */
+function buildDad() {
+  mountDad($('#dad'), { canon: () => canon, save, toast, fit, listen, who, openAsk: text => { go('ask'); openReview(text); } });
+}
+
 function buildRecord() {
   mountRecord($('#rec'), {
     canon: () => canon, session: () => session, save, toast, fit, listen,

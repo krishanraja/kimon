@@ -20,7 +20,16 @@ pathway, mostly from overseas. Live at **https://laurenthermos.com**
   by the sheet API (Stable / Changed / Act-now).
 - **His record**: key numbers, recent concerns, cardiologist questions (tap to
   mark asked), knowledge gaps, and a one-tap brief to paste to his doctor.
-- No scrolling anywhere: every screen is a card deck that fits the phone.
+- **Dad tab (family)**: monitor what Kimon logs (alerts first, habits and
+  tablets this week, his body check, what he said), send him nudges, and set
+  his care plan (daily habits, tablets).
+- **Kimon's own app (`/me`)**: his own access code, big text. One small thing a
+  day from the care plan, tick tablets, log a symptom any time (red flags show
+  "Call 000"), a weekly 5-question body check designed for honest answers, and
+  "Tell the family" by voice. Everything he logs is shared with family.
+- Voice: recorded on the phone, transcribed on the server (OpenAI
+  gpt-4o-transcribe, then whisper-1, then AI Gateway).
+- No scrolling anywhere: every screen fits the phone.
 
 ## Architecture
 
@@ -44,7 +53,9 @@ secret; the previous Muse build baked it into the page, this one does not.
 |---|---|---|
 | `SESSION_SECRET` | yes | 32+ random chars; signs the login cookie |
 | `SHEET_API_SECRET` | yes | the `APP_SECRET` value in the deployed Apps Script |
-| `ACCESS_CODE` | no | defaults to `kimon`; changing it logs everyone out |
+| `ACCESS_CODE` | no | family code, defaults to `kimon`; changing it logs family out |
+| `KIMON_CODE` | no | Kimon's own code, defaults to `heart`; opens `/me` |
+| `OPENAI_API_KEY` | no | best transcription (gpt-4o-transcribe) |
 | `SHEET_API_URL` | no | defaults to the live Apps Script `/exec` URL |
 | `ANTHROPIC_API_KEY` | no | if set, Ask calls Anthropic directly |
 | `AI_GATEWAY_API_KEY` | no | otherwise Vercel AI Gateway via the deployment's OIDC token |
