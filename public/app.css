@@ -485,17 +485,18 @@ h1, h2, h3, .sit-line, .brand, .card h3, .mval, .tile-big, .stat b, .sheet-title
 /* ---------- Ask Leffy: chat ---------- */
 .view.chat-view { padding: 0; }
 .chat { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.chat-head { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 2px 10px 10px 16px; border-bottom: .5px solid var(--line); }
+.chat-head { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 2px 10px 10px 16px; border-bottom: .5px solid var(--line); }
 .lf-stage { position: relative; width: 52px; height: 52px; }
 .lf-halo { position: absolute; inset: -4px; border-radius: 50%; border: 2px solid var(--accent); opacity: 0; }
 .chat:has(.leffy.listening) .lf-halo { border-color: var(--emergency); animation: halo 1.4s ease-out infinite; }
 .chat:has(.lf-stage .leffy.speaking) .lf-halo { animation: halo 1.8s ease-out infinite; }
 @keyframes halo { from { transform: scale(.92); opacity: .55; } to { transform: scale(1.18); opacity: 0; } }
-.chat-title { display: grid; min-width: 0; line-height: 1.2; }
+.chat-title { display: grid; align-content: center; gap: 1px; min-width: 0; min-height: 52px; line-height: 1.2; text-align: left; }
 .chat-title b { font-size: 17px; font-weight: 700; letter-spacing: -.02em; }
-.chat-title span { font-size: 13px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.bank-chip { min-height: 44px; padding: 0 2px; font-size: 13px; font-weight: 600; color: var(--accent); white-space: nowrap; }
-.bank-chip::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); margin-right: 6px; vertical-align: 1px; box-shadow: 0 0 0 3px var(--accent-soft); }
+.chat-title span { font-size: 13.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-title span.idle { color: var(--accent); font-weight: 600; }
+.chat-title span.idle::after { content: " \203A"; }
+.chat-title:active span.idle { opacity: .6; }
 .thread { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 14px 14px 10px; display: flex; flex-direction: column; gap: 8px; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
 .thread::-webkit-scrollbar { display: none; }
 .thread > :first-child { margin-top: auto; }
@@ -551,9 +552,12 @@ h1, h2, h3, .sit-line, .brand, .card h3, .mval, .tile-big, .stat b, .sheet-title
 .rrow.dup { opacity: .55; }
 .rcard .meta { font-size: 12.5px; color: var(--ink-3); }
 .dock { padding: 6px 12px 8px; display: grid; gap: 8px; }
-.suggest { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.suggest { display: flex; flex-wrap: nowrap; gap: 8px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; margin: 0 -12px; padding: 1px 12px; scroll-padding: 0 12px; }
+.suggest::-webkit-scrollbar { display: none; }
 .suggest:empty { display: none; }
-.spill { min-height: 40px; padding: 0 15px; border-radius: 20px; background: var(--card); color: var(--accent); border: 1.5px solid color-mix(in srgb, var(--accent) 45%, transparent); font-size: 15px; font-weight: 600; text-align: left; line-height: 1.2; display: inline-flex; align-items: center; gap: 6px; animation: msgIn .35s cubic-bezier(.2, .8, .3, 1.1) both; }
+.suggest.more { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent); }
+.spill { flex: none; min-height: 38px; padding: 0 14px; border-radius: 19px; background: var(--card); color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); font-size: 15px; font-weight: 600; white-space: nowrap; line-height: 1; display: inline-flex; align-items: center; gap: 6px; animation: msgIn .35s cubic-bezier(.2, .8, .3, 1.1) both; }
+.spill:first-child { margin-left: auto; }
 .spill:nth-child(2) { animation-delay: .05s; } .spill:nth-child(3) { animation-delay: .1s; } .spill:nth-child(4) { animation-delay: .15s; }
 .spill:active { transform: scale(.95); background: var(--accent-soft); }
 .spill svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }

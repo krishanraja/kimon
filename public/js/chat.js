@@ -54,8 +54,7 @@ export function mountChat(root, context) {
   el.innerHTML = `
     <header class="chat-head">
       <div class="lf-stage"><span class="lf-halo"></span><div id="lfHead"></div></div>
-      <div class="chat-title"><b>Leffy</b><span id="lfStatus" aria-live="polite">Your heart helper</span></div>
-      <button class="bank-chip" id="bankChip" type="button"></button>
+      <button class="chat-title" id="lfTitle" type="button" aria-label="What Leffy knows"><b>Leffy</b><span id="lfStatus" class="idle" aria-live="polite"></span></button>
       <button class="icon-btn" id="newChat" type="button" aria-label="Start a new chat">${ICON.compose}</button>
     </header>
     <div class="thread" id="thread" role="log" aria-label="Chat with Leffy"></div>
@@ -76,7 +75,7 @@ export function mountChat(root, context) {
   head = createLeffy($('#lfHead', el));
   wireComposer();
   $('#newChat', el).onclick = () => { if (asking) return; chat = { id: newId(), msgs: [] }; persist(); renderAll(); greet(true); };
-  $('#bankChip', el).onclick = bankSheet;
+  $('#lfTitle', el).onclick = bankSheet;
   renderAll();
   greet(!chat.msgs.length);
 }
@@ -87,14 +86,24 @@ export function showChat() { if (el) { scrollDown(true); $('#msg', el).dispatchE
 // Called when the record changes (new logs, facts, photos).
 export function refreshChat() {
   if (!el) return;
-  const n = ctx.canon() ? bankSize(bank(ctx.canon())) : 0;
-  const chip = $('#bankChip', el);
-  chip.textContent = n ? `Knows ${n} thing${n === 1 ? '' : 's'}` : 'What I know';
+  if (busy === null) status();
   if (!chat.msgs.length) renderSuggest();
 }
 
 /* ---------- rendering ---------- */
-function status(t) { $('#lfStatus', el).textContent = t; }
+// One line under his name: what he is doing right now, or (when idle) how
+// much he knows, which opens the knowledge bank.
+let busy = null;
+function knows() {
+  const n = ctx.canon() ? bankSize(bank(ctx.canon())) : 0;
+  return n ? `Knows ${n} thing${n === 1 ? '' : 's'} about ${isKimon() ? 'you' : 'Kimon'}` : 'Your heart helper';
+}
+function status(t) {
+  busy = t || null;
+  const s = $('#lfStatus', el);
+  s.textContent = busy || knows();
+  s.className = busy ? 'busy' : 'idle';
+}
 
 function greeting() {
   const k = isKimon();
@@ -193,27 +202,27 @@ function updateMsg(m) {
   const col = n.querySelector('.mcol');
   col.innerHTML = leffyBody(m);
   wireMsg(n);
-  scrollDown();
 }
 
-function appendMsg(m) {
+function appendMsg(m, quiet = false) {
   const t = $('#thread', el);
   t.insertAdjacentHTML('beforeend', msgHtml(m, chat.msgs[chat.msgs.indexOf(m) - 1]));
   mountMinis(t);
   const n = t.lastElementChild;
   if (n?.classList.contains('bot')) wireMsg(n);
-  scrollDown(true);
+  if (!quiet) scrollDown(true);
 }
 
-// Show a finished reply from its first line when it is taller than the screen.
-function reveal(m) {
-  requestAnimationFrame(() => {
-    const t = $('#thread', el), n = $(`.cm[data-id="${m.id}"]`, el);
-    if (!t || !n) return;
-    const top = n.offsetTop - t.offsetTop - 8;
-    t.scrollTo({ top: n.offsetHeight > t.clientHeight - 24 ? top : t.scrollHeight, behavior: 'smooth' });
-  });
+// Keep a reply in view while it is written: follow it down until it fills
+// the screen, then hold its first line at the top so it reads from the start.
+function follow(m) {
+  const t = $('#thread', el), n = $(`.cm[data-id="${m.id}"]`, el);
+  if (!t || !n) return;
+  const top = n.getBoundingClientRect().top - t.getBoundingClientRect().top + t.scrollTop - 8;
+  t.scrollTop = n.offsetHeight > t.clientHeight - 16 ? top : t.scrollHeight;
 }
+// After layout settles (the reply pills change the thread's height).
+const followSoon = m => requestAnimationFrame(() => requestAnimationFrame(() => follow(m)));
 
 function scrollDown(force) {
   const t = $('#thread', el);
@@ -273,6 +282,9 @@ function renderSuggest() {
   else pills = [];
   box.innerHTML = pills.map(p => `<button type="button" class="spill" data-pill>${esc(p)}</button>`).join('')
     + (!last ? `<button type="button" class="spill photo" data-photo>${ICON.cam}<span>Read a test result</span></button>` : '');
+  // One row that scrolls sideways; a soft edge shows when there is more.
+  const edge = () => box.classList.toggle('more', box.scrollLeft + box.clientWidth < box.scrollWidth - 4);
+  box.scrollLeft = 0; box.onscroll = edge; requestAnimationFrame(edge);
   const unsaved = last?.role === 'leffy' && last.answer?.results?.some(r => !r.duplicate) && !last.resultsSaved ? last : null;
   box.querySelectorAll('[data-pill]').forEach(b => b.onclick = () => {
     navigator.vibrate?.(8);
@@ -352,7 +364,7 @@ async function stopRec(keep) {
   el.classList.remove('recording');
   $('#recbar', el).hidden = true; $('#msg', el).hidden = false; $('#recTime', el).textContent = '0:00';
   const mic = $('#micBtn', el); mic.innerHTML = ICON.mic; mic.setAttribute('aria-label', 'Talk to Leffy');
-  if (!keep) { h.stop(); head.set('idle'); status('Your heart helper'); renderSuggest(); return; }
+  if (!keep) { h.stop(); head.set('idle'); status(); renderSuggest(); return; }
   head.set('thinking'); status('Writing down what you said');
   mic.disabled = true;
   try {
@@ -365,7 +377,7 @@ async function stopRec(keep) {
     }
   } catch { ctx.toast("Couldn't turn that into words. Try again, or type.", 3500); }
   mic.disabled = false;
-  head.set('idle'); status('Your heart helper'); renderSuggest();
+  head.set('idle'); status(); renderSuggest();
 }
 
 /* ---------- sending ---------- */
@@ -393,11 +405,11 @@ async function ask(m, image, level) {
     .map(x => ({ role: x.role, text: x.role === 'user' ? (x.photo ? '[photo] ' : '') + x.text : x.answer.reply }));
   let res = null;
   const body = { message: m.ask, thread, rid: m.rid, threadId: chat.id, by: ctx.who(), ...(image ? { image: { data: image.data, type: image.type } } : {}) };
-  const onDelta = d => { m.text += d; const s = $(`.cm[data-id="${m.id}"] .stream`, el); if (s) { s.textContent = m.text; s.parentElement.querySelector('.dots')?.remove(); } else updateMsg(m); head.speak(); status('Typing'); scrollDown(); };
+  const onDelta = d => { m.text += d; const s = $(`.cm[data-id="${m.id}"] .stream`, el); if (s) { s.textContent = m.text; s.parentElement.querySelector('.dots')?.remove(); } else updateMsg(m); head.speak(); status('Typing'); follow(m); };
   const onLearned = ev => {
     if (!ev.facts?.length) return;
     const note = { id: newId(), role: 'note', ts: Date.now(), text: `Leffy will remember: ${ev.facts.map(f => f.fact).join(' · ')}` };
-    chat.msgs.push(note); appendMsg(note); persist();
+    chat.msgs.push(note); appendMsg(note, true); persist();
     ctx.reload?.();
   };
   try {
@@ -412,8 +424,8 @@ async function ask(m, image, level) {
   try { localStorage.removeItem('kimon.pendingAsk'); } catch { /* private mode */ }
   if (res) finish(m, res);
   else {
-    m.pending = false; m.failed = true; updateMsg(m); persist();
-    head.set('idle'); status('Your heart helper');
+    m.pending = false; m.failed = true; updateMsg(m); persist(); followSoon(m);
+    head.set('idle'); status();
     if (level === 'emergency') ctx.toast('No connection. If this is happening now: call 000.', 6000);
     renderSuggest();
   }
@@ -422,21 +434,20 @@ async function ask(m, image, level) {
 function finish(m, res) {
   m.pending = false; m.failed = false; m.answer = res.answer; m.text = res.answer.reply; m.saved = res.saved;
   updateMsg(m); persist();
-  reveal(m);
   if (head.state !== 'speaking') head.done(); else setTimeout(() => head.done(), 500);
-  status(res.source?.kind === 'rules' ? 'Offline answer' : res.saved ? 'Saved to the record' : 'Your heart helper');
-  setTimeout(() => { if (!asking && !recording) status('Your heart helper'); }, 4000);
+  status(res.source?.kind === 'rules' ? 'Offline answer' : res.saved ? 'Saved to the record' : null);
+  setTimeout(() => { if (!asking && !recording) status(); }, 3000);
   // The reply now carries the verdict and who to call, right where it is read.
   $('#chatFlag', el).hidden = true;
   renderSuggest();
-  reveal(m);
+  followSoon(m);
   if (res.saved) ctx.reload?.();
 }
 
 function retry(m) {
   if (asking) return;
   m.failed = false; m.pending = true; m.text = ''; m.rid = newId();
-  updateMsg(m); ask(m, images.get(m) || null, triage(m.ask).level);
+  updateMsg(m); scrollDown(true); ask(m, images.get(m) || null, triage(m.ask).level);
 }
 
 async function streamAsk(body, onStage, onDelta, onLearned) {
@@ -541,7 +552,7 @@ function say(text) {
   const u = new SpeechSynthesisUtterance(text); u.lang = 'en-AU'; u.rate = .98;
   u.onstart = () => { head.speak(); status('Talking'); };
   u.onboundary = () => head.speak();
-  u.onend = u.onerror = () => { head.done(); status('Your heart helper'); };
+  u.onend = u.onerror = () => { head.done(); status(); };
   speechSynthesis.speak(u);
   head.speak();
 }
