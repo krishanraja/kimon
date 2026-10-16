@@ -1,10 +1,11 @@
-import { triage, CONTACTS } from '/js/triage.js';
+import { CONTACTS } from '/js/triage.js';
 import { mountRecord, refreshRecord, recordHome, openSheet } from '/js/record.js';
 import { extract, resultCards, situation, fmtDate, STAGES } from '/js/metrics.js';
 import { plainTask } from '/js/record-model.js';
 import { mountDad, refreshDad, dadHome } from '/js/dad.js';
 import { resultsText } from '/js/speech.js';
-import { canRecord, startRecording, transcribeBlob, fmtTime } from '/js/recorder.js';
+import { canRecord, startRecording, transcribeBlob } from '/js/recorder.js';
+import { mountChat, refreshChat, sendToChat, checkPending, stopSpeaking, photoToChat, showChat } from '/js/chat.js';
 
 /* ---------------- tiny helpers ---------------- */
 const $ = (s, el = document) => el.querySelector(s);
@@ -13,7 +14,7 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem('kimon.' + k); return v ? JSON.parse(v) : d; } catch { return d; } },
   set(k, v) { try { localStorage.setItem('kimon.' + k, JSON.stringify(v)); } catch { /* private mode */ } },
 };
-const who = () => (store.get('who', '') || 'app').slice(0, 40);
+const who = () => session.role === 'kimon' ? 'Kimon' : (store.get('who', '') || 'app').slice(0, 40);
 const linkify = s => esc(s).replace(/\b(vved\.org\.au)\b/g, '<a href="https://$1" target="_blank" rel="noopener">$1</a>')
   .replace(/\b(000|1300 60 60 24|1800 022 222)\b/g, m => `<a href="tel:${m.replace(/\s/g, '')}">${m}</a>`);
 
@@ -51,7 +52,7 @@ async function loadCanon() {
     canon = await api('/api/canon', { timeout: 14000 });
     store.set('canon', canon);
     setSync('ok', 'Up to date');
-    refreshRecord(); refreshDad();
+    refreshRecord(); refreshDad(); refreshChat();
     if (!checkTouched) buildCheck();
   } catch (e) {
     if (e.status === 401) return;
@@ -85,19 +86,48 @@ addEventListener('online', () => flushQueue().then(loadCanon));
 $('#sync').addEventListener('click', () => flushQueue().then(loadCanon));
 
 /* ---------------- login / boot ---------------- */
-function showLogin() { $('#app').hidden = true; $('#login').hidden = false; setTimeout(() => $('#code').focus(), 50); }
+function showLogin() {
+  $('#app').hidden = true; $('#login').hidden = false;
+  $('#loginCode').hidden = false; $('#loginWho').hidden = true;
+  setTimeout(() => $('#code').focus(), 50);
+}
 
 $('#loginForm').addEventListener('submit', async e => {
   e.preventDefault();
   const msg = $('#loginMsg'); msg.textContent = '';
+  const btn = e.submitter || $('#loginForm .btn'); btn.disabled = true;
   try {
     const r = await fetch('/api/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: $('#code').value }) });
-    if (!r.ok) { msg.textContent = 'That code is not right'; $('#code').select(); return; }
-    $('#code').value = '';
     const j = await r.json().catch(() => ({}));
+    if (!r.ok) { msg.textContent = j.error || 'That code is not right'; $('#code').select(); return; }
+    $('#code').value = '';
     if (j.role === 'kimon') return location.replace('/me');
+    if (j.askWho) return askWho();
     boot();
   } catch { msg.textContent = 'No connection. Try again.'; }
+  finally { btn.disabled = false; }
+});
+
+// The passcode is shared, so the phone says who is using it.
+function askWho() {
+  $('#loginCode').hidden = true; $('#loginWho').hidden = false;
+  $('#whoName').hidden = true; $('#whoPick').hidden = false;
+  $('#nameInput').value = store.get('who', '');
+}
+async function setPersona(persona) {
+  const r = await fetch('/api/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ persona }) }).catch(() => null);
+  if (!r || !r.ok) { toast('No connection. Try again.'); return false; }
+  return true;
+}
+$('#loginWho').addEventListener('click', async e => {
+  const b = e.target.closest('[data-who]'); if (!b) return;
+  if (b.dataset.who === 'kimon') { if (await setPersona('kimon')) location.replace('/me'); return; }
+  $('#whoPick').hidden = true; $('#whoName').hidden = false; setTimeout(() => $('#nameInput').focus(), 50);
+});
+$('#whoName').addEventListener('submit', async e => {
+  e.preventDefault();
+  store.set('who', $('#nameInput').value.trim());
+  if (await setPersona('family')) boot();
 });
 
 async function boot() {
@@ -105,16 +135,20 @@ async function boot() {
     const r = await fetch('/api/session', { credentials: 'same-origin', signal: AbortSignal.timeout(10000) });
     if (r.status === 401) return showLogin();
     session = await r.json();
-    if (session.role === 'kimon') return location.replace('/me');
   } catch {
     if (!canon) return showLogin(); // never seen data on this phone; need the network once
-    session = { sheetConfigured: true };
+    session = { sheetConfigured: true, role: store.get('role', 'family') };
   }
+  store.set('role', session.role);
+  // Kimon sees his own home first; the full dashboard is one tap from there.
+  if (isKimon() && !new URLSearchParams(location.search).has('full')) return location.replace('/me');
+  document.body.classList.toggle('as-kimon', isKimon());
+  $('#homeBtn').hidden = !isKimon();
   $('#login').hidden = true; $('#app').hidden = false;
-  buildCheck(); buildRecord(); buildDad();
+  buildCheck(); buildRecord(); buildDad(); buildChat();
   await flushQueue();
   loadCanon();
-  checkPendingAsk();
+  checkPending();
 }
 
 /* ---------------- tabs ---------------- */
@@ -126,7 +160,7 @@ document.querySelectorAll('.nav-btn').forEach(b => b.addEventListener('click', (
 function go(name) {
   document.querySelectorAll('.view').forEach(v => { v.hidden = v.dataset.view !== name; });
   document.querySelectorAll('.nav-btn').forEach(b => { if (b.dataset.go === name) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
-  if (name !== 'ask') stopListening();
+  if (name !== 'ask') stopSpeaking(); else showChat();
   requestAnimationFrame(fitAll);
 }
 
@@ -182,19 +216,14 @@ function fit(box) {
 function fitAll() { document.querySelectorAll('.view:not([hidden]) .fit').forEach(fit); }
 addEventListener('resize', () => requestAnimationFrame(fitAll));
 
-/* ---------------- ASK ---------------- */
-const askParts = ['askIdle', 'askReview', 'askThinking', 'ideasSheet', 'answerDeck'];
-function askShow(id) { askParts.forEach(p => { $('#' + p).hidden = p !== id; }); }
-
+/* ---------------- voice: shared dictation for text boxes ---------------- */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let rec = null, listening = false, orbRec = null, orbTimer = 0;
 const micBlocked = () => toast('Microphone blocked. Allow it in browser settings, or type.', 4000);
 
-// Shared dictation for any text box. Records on the phone and transcribes on
-// the server; falls back to the browser recogniser. Returns stop(), or null.
+// Records on the phone and transcribes on the server; falls back to the
+// browser recogniser. Returns stop(), or null.
 // onState(true) while recording, ('busy') while transcribing, (false) when done.
 function listen(onText, onState) {
-  if (listening) stopListening(false);
   if (canRecord()) {
     let handle = null, done = false;
     startRecording({ onAutoStop: () => stop() }).then(h => { handle = h; onState?.(true); navigator.vibrate?.(15); })
@@ -223,244 +252,23 @@ function listen(onText, onState) {
   return () => { if (live) { live = false; try { r.stop(); } catch { /* stopped */ } onState?.(false); } };
 }
 
-function orbState(state) {
-  const orb = $('#orb');
-  orb.classList.toggle('on', state === 'rec');
-  orb.classList.toggle('busy', state === 'busy');
-  orb.setAttribute('aria-pressed', String(state === 'rec'));
-  orb.setAttribute('aria-label', state === 'rec' ? 'Stop and review' : 'Start speaking');
-  $('#askEyebrow').textContent = state === 'rec' ? 'Listening. Tap when done' : state === 'busy' ? 'Writing down what you said' : 'Tap and talk';
-  if (state !== 'rec') orb.style.removeProperty('--lvl');
+/* ---------------- ASK LEFFY ---------------- */
+const isKimon = () => session.role === 'kimon';
+function openAsk(text) { go('ask'); sendToChat(text); }
+function buildChat() {
+  mountChat($('#chat'), { canon: () => canon, role: () => session.role, who, save, toast, listen, openSheet, showLogin, reload: () => loadCanon() });
 }
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkPending(); });
 
-async function startListening() {
-  if (!canRecord()) return startBrowserListening();
-  try {
-    orbRec = await startRecording({ onLevel: v => $('#orb').style.setProperty('--lvl', v.toFixed(2)), onAutoStop: () => stopListening(true) });
-  } catch (e) {
-    if (e?.name === 'NotAllowedError') micBlocked(); else toast('Could not start the microphone. Type instead.');
-    return openReview('');
-  }
-  listening = true; orbState('rec'); navigator.vibrate?.(15);
-  $('#live').textContent = '0:00';
-  orbTimer = setInterval(() => { if (orbRec) $('#live').textContent = fmtTime(orbRec.elapsed()); }, 250);
-}
-
-async function stopListening(toReview) {
-  if (!listening) return;
-  listening = false;
-  if (rec) { try { rec.stop(); } catch { /* stopped */ } rec = null; }
-  if (!orbRec) { // browser recogniser path
-    orbState('idle');
-    const said = $('#live').textContent.trim();
-    if (toReview && said) openReview(said);
-    return;
-  }
-  clearInterval(orbTimer);
-  const h = orbRec; orbRec = null;
-  orbState('busy'); $('#live').textContent = '';
-  try {
-    const blob = await h.stop();
-    if (h.silent()) { orbState('idle'); if (toReview) toast("I didn't hear anything. Try again, closer to the phone.", 4000); return; }
-    const text = await transcribeBlob(blob);
-    orbState('idle');
-    if (!toReview) return;
-    if (text) openReview(text); else { toast("Didn't catch that. Try again, a little closer to the phone."); }
-  } catch {
-    orbState('idle');
-    if (toReview) { toast("Couldn't turn that into words. Try again, or type.", 4000); openReview(''); }
-  }
-}
-
-// Fallback for browsers without recording support.
-function startBrowserListening() {
-  if (!SR) { toast('Voice is not available in this browser. Type instead.'); return openReview(''); }
-  rec = new SR(); rec.lang = 'en-AU'; rec.continuous = true; rec.interimResults = true;
-  rec.onresult = e => { $('#live').textContent = resultsText(e); };
-  rec.onerror = e => { if (e.error === 'not-allowed') micBlocked(); stopListening(true); };
-  rec.onend = () => { if (listening) stopListening(true); };
-  try { rec.start(); } catch { return; }
-  listening = true; orbState('rec'); $('#live').textContent = '';
-  navigator.vibrate?.(15);
-}
-$('#orb').addEventListener('click', () => {
-  if ($('#orb').classList.contains('busy')) return;
-  listening ? stopListening(true) : startListening();
-});
-
-function openReview(text) {
-  askShow('askReview');
-  const ta = $('#concern'); ta.value = text || store.get('draft', ''); updateFlag();
-  if (!text) setTimeout(() => ta.focus(), 50);
-}
-function flagHtml(level, reasons) {
-  if (level === 'routine') return '';
-  const c = CONTACTS[level];
-  return `<b>${esc(c.title)}.</b> ${esc(reasons[0] || '')}${level === 'emergency' ? '. ' + linkify(c.lines[1]) : ''}`;
-}
-function updateFlag(target = '#flag') {
-  const { level, reasons } = triage($('#concern').value);
-  const f = $(target); f.className = 'flag ' + level; f.innerHTML = flagHtml(level, reasons); f.hidden = level === 'routine';
-  return level;
-}
-$('#concern').addEventListener('input', () => { store.set('draft', $('#concern').value); updateFlag(); });
-$('#typeInstead').addEventListener('click', () => openReview(''));
-$('#ideas').addEventListener('click', () => askShow('ideasSheet'));
-$('#ideasClose').addEventListener('click', () => askShow('askIdle'));
-document.querySelectorAll('.idea').forEach(b => b.addEventListener('click', () => openReview(b.textContent)));
-$('#redo').addEventListener('click', () => { store.set('draft', ''); $('#live').textContent = ''; askShow('askIdle'); });
-
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-
-// Keep the screen on while an answer is being prepared (a sleeping phone can
-// drop the connection). Best effort: not every browser supports it.
-let wakeLock = null;
-async function keepAwake(on) {
-  try {
-    if (on && 'wakeLock' in navigator && !wakeLock) { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener?.('release', () => { wakeLock = null; }); }
-    if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; }
-  } catch { wakeLock = null; }
-}
-
-// Read the server's progress stream until the answer arrives.
-async function streamAsk(concern, rid, onStage) {
-  const r = await fetch('/api/ask', {
-    method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ concern, by: who(), rid }), signal: AbortSignal.timeout(190000),
-  });
-  if (r.status === 401) { showLogin(); throw Object.assign(new Error('login required'), { status: 401 }); }
-  if (!r.ok || !r.body) throw new Error('HTTP ' + r.status);
-  const reader = r.body.getReader(), dec = new TextDecoder();
-  let buf = '';
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    let i;
-    while ((i = buf.indexOf('\n')) >= 0) {
-      const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
-      if (!line) continue;
-      let ev; try { ev = JSON.parse(line); } catch { continue; }
-      if (ev.type === 'stage') onStage(ev.text);
-      else if (ev.type === 'answer') return ev;
-      else if (ev.type === 'error') throw new Error(ev.error);
-    }
-  }
-  throw new Error('connection closed before the answer');
-}
-
-// The server saves every answer with its id; fetch it if the stream was lost.
-async function recoverAnswer(rid, tries = 8) {
-  for (let i = 0; i < tries; i++) {
-    await sleep(i === 0 ? 2000 : 8000);
-    try {
-      const r = await fetch('/api/answer?rid=' + encodeURIComponent(rid), { credentials: 'same-origin', signal: AbortSignal.timeout(20000) });
-      if (r.ok) return await r.json();
-    } catch { /* keep trying */ }
-  }
-  return null;
-}
-
-let asking = false;
-async function runAsk(concern) {
-  asking = true;
-  const rid = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
-  store.set('pendingAsk', { rid, concern, ts: Date.now() });
-  askShow('askThinking');
-  const lvl = updateFlag('#thinkFlag');
-  const line = t => { $('#thinkLine').textContent = t; };
-  line('Sending your question');
-  keepAwake(true);
-  let res = null;
-  try {
-    res = await streamAsk(concern, rid, line);
-  } catch (e) {
-    if (e.status === 401) { asking = false; keepAwake(false); return; }
-    // A server error before anything was saved: try once more straight away.
-    if (/^HTTP 5/.test(e.message)) {
-      line('Trying again');
-      try { res = await streamAsk(concern, rid, line); } catch { /* fall through to recovery */ }
-    }
-    if (!res) { line('The connection dropped. Getting your answer'); res = await recoverAnswer(rid); }
-  }
-  keepAwake(false);
-  asking = false;
-  if (res) {
-    store.set('pendingAsk', null); store.set('draft', '');
-    showAnswer(res);
-    if (res.saved) loadCanon();
-  } else {
-    toast(lvl === 'emergency' ? 'No connection. If this is happening now: call 000.' : "The answer didn't arrive. Your words are kept. Tap Get the answer to try again.", 6000);
-    openReview(concern);
-  }
-}
-$('#askBtn').addEventListener('click', () => {
-  const concern = $('#concern').value.trim();
-  if (concern.length < 3) { toast('Say or type the worry first'); return; }
-  runAsk(concern);
-});
-
-// Back on the app after switching away: collect an answer that finished meanwhile.
-async function checkPendingAsk() {
-  const p = store.get('pendingAsk', null);
-  if (!p || asking || Date.now() - p.ts > 15 * 60000) return;
-  const res = await recoverAnswer(p.rid, 2);
-  if (res && !asking) {
-    store.set('pendingAsk', null);
-    go('ask'); showAnswer(res); toast('Here is the answer to your last question');
-  }
-}
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkPendingAsk(); });
-
-
-const LEVEL_NAME = { emergency: 'Emergency', urgent: 'Today', soon: 'This week', routine: 'No red flags' };
-
-function list(items) {
-  return `<ul>${items.map((t, n) => `<li><span class="n">${n + 1}</span><span>${linkify(t)}</span></li>`).join('')}</ul>`;
-}
-
-function showAnswer(res) {
-  const a = res.answer, lvl = a.urgency, c = res.contacts;
-  const speakText = [a.headline, a.whatItLikelyMeans].join(' ');
-  const cards = [{
-    cls: 'level ' + lvl,
-    html: `<p class="kicker">${LEVEL_NAME[lvl]}</p>
-      <h3>${esc(a.headline)}</h3>
-      <div class="who"><b>${esc(c.title)}</b>${c.lines.map(l => `<span>${linkify(l)}</span>`).join('')}</div>
-      <div class="card-actions"><button class="pill" data-say>Read it to me</button></div>`,
-    mount: card => { card.querySelector('[data-say]').onclick = () => say(speakText); },
-  }];
-  if (a.whatItLikelyMeans) cards.push({ html: `<p class="kicker">What's likely going on</p><p>${esc(a.whatItLikelyMeans)}</p>${a.usedFromRecord.length ? `<p class="meta">Based on: ${esc(a.usedFromRecord.join(' · '))}</p>` : ''}` });
-  if (a.doNow.length) cards.push({ html: `<p class="kicker">Do this</p>${list(a.doNow)}` });
-  if (a.watchFor.length) cards.push({ html: `<p class="kicker">Watch for</p>${list(a.watchFor)}` });
-  if (a.askTheDoctor.length) cards.push({
-    html: `<p class="kicker">Ask his doctor</p>${list(a.askTheDoctor)}<div class="card-actions"><button class="pill" data-addq>Add these to his questions</button></div>`,
-    mount: card => {
-      card.querySelector('[data-addq]').onclick = async ev => {
-        ev.target.disabled = true; ev.target.textContent = 'Adding';
-        let ok = true;
-        for (const q of a.askTheDoctor) ok = (await save('question', { question: q, askWhom: 'GP or cardiologist', priority: '2' })).ok && ok;
-        ev.target.textContent = ok ? 'Added to his record' : 'Will save when online';
-        loadCanon();
-      };
-    },
-  });
-  cards.push({
-    html: `<p class="kicker">Where this comes from</p>
-      ${a.evidence.length ? `<ul>${a.evidence.map(e => `<li><span class="n">✓</span><span>${esc(e.point)}${e.url ? ` <a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(shortSrc(e.title))}</a>` : ' <small>general clinical knowledge</small>'}</span></li>`).join('')}</ul>` : ''}
-      ${a.limits ? `<p class="meta">${esc(a.limits)}</p>` : ''}
-      <p class="meta">${res.source.kind === 'ai' ? `Answered from his record, the Australian heart guide${res.source.searched ? ` and ${res.source.searched} trusted web pages` : ''}.` : 'Rule-based answer (' + esc(res.source.reason) + ').'}
-      ${res.saved ? ' Saved to his record.' : res.recordError ? ' ' + esc(res.recordError) + '.' : ' Not saved.'}</p>`,
-  });
-  askShow('answerDeck');
-  deck($('#answerDeck'), cards, { onDone: () => { window.speechSynthesis?.cancel(); $('#live').textContent = ''; askShow('askIdle'); } });
-}
-function shortSrc(t) { return String(t || 'source').split(/[-|:]/)[0].trim().slice(0, 48); }
-function say(text) {
-  if (!('speechSynthesis' in window)) return toast('Reading aloud is not available here');
-  speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(text); u.lang = 'en-AU'; u.rate = .98;
-  speechSynthesis.speak(u);
+// Keep the chat composer above the keyboard: iOS does not resize the page.
+if (window.visualViewport) {
+  const vv = window.visualViewport, rootEl = document.documentElement;
+  const onVV = () => {
+    rootEl.style.setProperty('--app-h', vv.height + 'px');
+    document.body.classList.toggle('kb', innerHeight - vv.height > 140);
+    if (vv.offsetTop) window.scrollTo(0, 0);
+  };
+  vv.addEventListener('resize', onVV); vv.addEventListener('scroll', onVV); onVV();
 }
 
 /* ---------------- CHECK-IN: one question per card ---------------- */
@@ -549,13 +357,13 @@ function showCheckResult(verdict, r) {
 
 /* ---------------- RECORD ---------------- */
 function buildDad() {
-  mountDad($('#dad'), { canon: () => canon, save, toast, fit, listen, who, openAsk: text => { go('ask'); openReview(text); } });
+  mountDad($('#dad'), { canon: () => canon, save, toast, fit, listen, who, openAsk });
 }
 
 function buildRecord() {
   mountRecord($('#rec'), {
     canon: () => canon, session: () => session, save, toast, fit, listen,
-    openAsk: text => { go('ask'); openReview(text); },
+    openAsk, addPhoto: () => { go('ask'); photoToChat(); },
     onTasksChanged: () => { store.set('canon', canon); if (!checkTouched) buildCheck(); },
   });
 }
@@ -606,12 +414,25 @@ async function shareBrief() {
 $('#shareBtn').addEventListener('click', shareBrief);
 $('#gearBtn').addEventListener('click', () => openSheet(`
   <p class="kicker">Settings</p>
-  <label class="kicker" for="whoName">Your name, shown next to what you add</label>
-  <input id="whoName" maxlength="40" placeholder="First name">
+  <p class="kicker">Who is using this phone</p>
+  <div class="seg" role="group" aria-label="Who is using this phone">
+    <button type="button" data-persona="family" aria-pressed="${!isKimon()}">Family</button>
+    <button type="button" data-persona="kimon" aria-pressed="${isKimon()}">Kimon</button>
+  </div>
+  ${isKimon() ? '' : `<label class="kicker" for="whoName">Your name, shown next to what you add</label>
+  <input id="whoName" maxlength="40" placeholder="First name">`}
   <button class="btn" data-out>Log out on this phone</button>
   <button class="btn primary" data-close>Done</button>`, sheet => {
-  const w = sheet.querySelector('#whoName'); w.value = store.get('who', ''); w.oninput = () => store.set('who', w.value.trim());
-  sheet.querySelector('[data-out]').onclick = async () => { await fetch('/api/login', { method: 'DELETE' }); localStorage.clear(); location.reload(); };
+  const w = sheet.querySelector('#whoName');
+  if (w) { w.value = store.get('who', ''); w.oninput = () => store.set('who', w.value.trim()); }
+  sheet.querySelectorAll('[data-persona]').forEach(b => b.onclick = async () => {
+    const p = b.dataset.persona;
+    if ((p === 'kimon') === isKimon()) return;
+    if (!(await setPersona(p))) return;
+    store.set('role', p);
+    location.replace(p === 'kimon' ? '/me' : '/');
+  });
+  sheet.querySelector('[data-out]').onclick = async () => { await fetch('/api/login', { method: 'DELETE' }); localStorage.clear(); location.replace('/'); };
 }));
 
 boot();

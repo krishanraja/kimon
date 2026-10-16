@@ -21,15 +21,32 @@
 
 <!-- LOGIN -->
 <section id="login" class="login" hidden>
-  <div class="login-card">
+  <div class="login-card" id="loginCode">
     <img class="app-icon" src="/icon.svg" alt="" width="88" height="88">
     <h1>Beside</h1>
-    <p class="soft">For the family looking after Kimon.</p>
+    <p class="soft">Looking after Kimon's heart, together.</p>
     <form id="loginForm" autocomplete="off">
-      <label for="code" class="sr">Access code</label>
-      <input id="code" type="password" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Access code" required>
+      <label for="code" class="sr">Passcode</label>
+      <input id="code" type="password" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Passcode" required>
       <button class="btn primary" type="submit">Come in</button>
       <p id="loginMsg" class="msg" role="status" aria-live="polite"></p>
+    </form>
+  </div>
+  <div class="login-card who" id="loginWho" hidden>
+    <div id="whoPick">
+      <h1>Who's using this phone?</h1>
+      <p class="soft">So Beside opens on the right screen. You can change it in Settings.</p>
+      <div class="who-list">
+        <button class="who-opt" type="button" data-who="kimon"><span class="who-ic k">K</span><span class="who-t"><b>I'm Kimon</b><small>My day, my tablets, telling the family</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></button>
+        <button class="who-opt" type="button" data-who="family"><span class="who-ic f"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.3-7-9.4C5 7.9 7 6 9.3 6c1.1 0 2.1.5 2.7 1.3C12.6 6.5 13.6 6 14.7 6 17 6 19 7.9 19 10.6 19 15.7 12 20 12 20z"/></svg></span><span class="who-t"><b>I'm family</b><small>His record, check-ins and Leffy</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></button>
+      </div>
+    </div>
+    <form id="whoName" hidden>
+      <h1>What should we call you?</h1>
+      <p class="soft">Your name shows next to what you add, so everyone knows who did what.</p>
+      <label for="nameInput" class="sr">Your first name</label>
+      <input id="nameInput" maxlength="40" autocomplete="given-name" placeholder="First name">
+      <button class="btn primary" type="submit">Continue</button>
     </form>
   </div>
 </section>
@@ -39,6 +56,7 @@
   <header class="top">
     <span class="brand"><img src="/icon.svg" alt="" width="28" height="28">Beside</span>
     <span class="top-right">
+      <a id="homeBtn" class="home-btn" href="/me" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-7 8 7v8a1 1 0 0 1-1 1h-4v-6h-6v6H5a1 1 0 0 1-1-1z"/></svg><span>My home</span></a>
       <button id="sync" class="sync" type="button" aria-live="polite"><i></i><span>Connecting</span></button>
       <button id="shareBtn" class="icon-btn" type="button" aria-label="Share a summary for his doctor"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg></button>
       <button id="gearBtn" class="icon-btn" type="button" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
@@ -46,59 +64,9 @@
   </header>
 
   <div class="stage">
-    <!-- ASK -->
-    <section class="view" id="view-ask" data-view="ask" hidden>
-      <!-- idle / listening -->
-      <div class="ask-idle" id="askIdle">
-        <p class="eyebrow" id="askEyebrow">Tap and talk</p>
-        <h2 class="ask-q" id="askQ">What's on your mind about Dad?</h2>
-        <button id="orb" class="orb" type="button" aria-label="Start speaking" aria-pressed="false">
-          <span class="ring r1"></span><span class="ring r2"></span>
-          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="2.5" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3.5"/></svg>
-        </button>
-        <p class="live" id="live" aria-live="polite"></p>
-        <div class="ask-under">
-          <button class="link" id="typeInstead" type="button">Type instead</button>
-          <span class="dot-sep" aria-hidden="true"></span>
-          <button class="link" id="ideas" type="button">Ideas</button>
-        </div>
-      </div>
-
-      <!-- review what was said -->
-      <div class="ask-review" id="askReview" hidden>
-        <p class="eyebrow">Your concern</p>
-        <label for="concern" class="sr">Your concern</label>
-        <textarea id="concern" maxlength="2000" placeholder="Type or speak the worry, the way you'd tell a doctor friend."></textarea>
-        <div id="flag" class="flag" hidden></div>
-        <div class="row">
-          <button class="btn ghost" id="redo" type="button">Start over</button>
-          <button class="btn primary grow" id="askBtn" type="button">Get the answer</button>
-        </div>
-      </div>
-
-      <!-- thinking -->
-      <div class="ask-thinking" id="askThinking" hidden>
-        <div class="beat" aria-hidden="true"><span class="beat-glow"></span><svg viewBox="0 0 100 100"><path class="beat-l" d="M50 84 C33 72 15 58 15 39.5 C15 27 24 18.5 35 18.5 C42 18.5 47 22.5 50 28.5 Z"/><path class="beat-r" d="M50 84 C67 72 85 58 85 39.5 C85 27 76 18.5 65 18.5 C58 18.5 53 22.5 50 28.5 Z"/></svg></div>
-        <p class="think-line" id="thinkLine">Reading his record</p>
-        <div id="thinkFlag" class="flag" hidden></div>
-      </div>
-
-      <!-- ideas sheet -->
-      <div class="ideas" id="ideasSheet" hidden>
-        <p class="eyebrow">Common worries</p>
-        <div class="idea-list">
-          <button class="idea" type="button">He gets dizzy when he stands up. Is that his heart?</button>
-          <button class="idea" type="button">He's puffed walking uphill. Does that change things?</button>
-          <button class="idea" type="button">What does his calcium score actually mean?</button>
-          <button class="idea" type="button">Should he be on a statin or aspirin?</button>
-          <button class="idea" type="button">Is it safe for him to exercise now?</button>
-          <button class="idea" type="button">How soon should he see a cardiologist?</button>
-        </div>
-        <button class="btn ghost" id="ideasClose" type="button">Back</button>
-      </div>
-
-      <!-- answer deck -->
-      <div class="deck" id="answerDeck" hidden></div>
+    <!-- ASK LEFFY -->
+    <section class="view chat-view" id="view-ask" data-view="ask" hidden>
+      <div class="chat" id="chat"></div>
     </section>
 
     <!-- CHECK-IN -->
@@ -125,7 +93,7 @@
     <button class="nav-btn" data-go="dad">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.3-7-9.4C5 7.9 7 6 9.3 6c1.1 0 2.1.5 2.7 1.3C12.6 6.5 13.6 6 14.7 6 17 6 19 7.9 19 10.6 19 15.7 12 20 12 20z"/></svg><span>Monitor</span></button>
     <button class="nav-btn" data-go="ask">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 3l1.6 4.4L16 9l-4.4 1.6L10 15l-1.6-4.4L4 9l4.4-1.6zM18 13l.9 2.1L21 16l-2.1.9L18 19l-.9-2.1L15 16l2.1-.9zM18 2.5l.6 1.4 1.4.6-1.4.6-.6 1.4-.6-1.4-1.4-.6 1.4-.6z"/></svg><span>Ask AI</span></button>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 3l1.6 4.4L16 9l-4.4 1.6L10 15l-1.6-4.4L4 9l4.4-1.6zM18 13l.9 2.1L21 16l-2.1.9L18 19l-.9-2.1L15 16l2.1-.9zM18 2.5l.6 1.4 1.4.6-1.4.6-.6 1.4-.6-1.4-1.4-.6 1.4-.6z"/></svg><span>Ask Leffy</span></button>
   </nav>
 </main>
 

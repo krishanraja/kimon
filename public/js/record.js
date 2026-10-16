@@ -198,13 +198,14 @@ function resultsView(canon) {
       <p>${esc(c.def.meaning(c.value))}</p>
       ${extraFor(c, m)}
       <p class="why drop">${esc(c.def.why)}</p>`;
-  const foot = `<div class="mfoot"><button class="pill" data-ask>Ask about this</button><span class="meta">${src}${c.def.ref ? ` · <a href="${esc(REF_URLS[c.def.ref] || '#')}" target="_blank" rel="noopener">evidence</a>` : ''}</span></div>`;
+  const foot = `<div class="mfoot"><button class="pill" data-ask>Ask about this</button><button class="pill" data-photo>+ Photo</button><span class="meta">${src}${c.def.ref ? ` · <a href="${esc(REF_URLS[c.def.ref] || '#')}" target="_blank" rel="noopener">evidence</a>` : ''}</span></div>`;
 
   root.innerHTML = spokeHead('Results') + `
     <div class="chipnav" role="tablist">${cards.map((x, k) => `<button role="tab" aria-selected="${k === resultIdx}" data-k="${k}"><i class="dot ${x.missing ? 'none' : x.tone}"></i>${esc(x.def.short)}</button>`).join('')}</div>
     <article class="card mcard"><div class="fit">${body}</div>${foot}</article>`;
   root.querySelector('[data-back]').onclick = () => go('home');
   root.querySelectorAll('.chipnav [data-k]').forEach(b => b.onclick = () => { resultIdx = +b.dataset.k; render(); });
+  root.querySelector('[data-photo]').onclick = () => ctx.addPhoto();
   root.querySelector('[data-ask]').onclick = () => ctx.openAsk(c.missing ? 'He has never had a blood pressure reading on file. How should we get one, and what would worry you?' : c.def.ask(fmtNum(c.value)));
   swipe(root.querySelector('.mcard'), d => { resultIdx = Math.max(0, Math.min(cards.length - 1, resultIdx + d)); render(); });
 }

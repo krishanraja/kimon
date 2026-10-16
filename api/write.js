@@ -1,4 +1,4 @@
-import { requireAuth } from '../lib/auth.js';
+import { requireAuth, byFor } from '../lib/auth.js';
 import { write, WRITE_ACTIONS } from '../lib/sheet.js';
 
 export default async function handler(req, res) {
@@ -7,10 +7,10 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'POST only' });
   const { action, payload, by } = req.body || {};
   if (!WRITE_ACTIONS.includes(action)) return res.status(400).json({ ok: false, error: 'unknown action' });
-  // Kimon logs; only family edits the record and the care plan.
-  if (role === 'kimon' && action !== 'note') return res.status(403).json({ ok: false, error: 'not allowed' });
+  // Kimon can open the full dashboard, so he can do everything the family can.
+  // Whatever he adds is always attributed to him.
   try {
-    const out = await write(action, payload || {}, role === 'kimon' ? 'Kimon' : String(by || 'app').slice(0, 40));
+    const out = await write(action, payload || {}, byFor(role, by));
     return res.status(200).json(out);
   } catch (e) {
     return res.status(502).json({ ok: false, error: e.message, code: e.code || 'SHEET_ERROR' });

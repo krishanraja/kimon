@@ -2,13 +2,24 @@
 
 ## App API (Vercel, same origin, cookie auth)
 
-- `POST /api/login {code}` sets `kimon_session` (HttpOnly, Secure, 1 year). `DELETE /api/login` logs out.
-- `GET /api/session` returns `{authed, sheetConfigured, ai}` or 401.
-- `GET /api/canon` returns the whole sheet canon (shape below).
-- `POST /api/write {action, payload, by}` proxies one sheet write (actions below).
-- `POST /api/ask {concern, by}` returns `{triage, answer, contacts, source, saved}`;
-  `answer` = `{urgency, headline, whatItLikelyMeans, doNow[], watchFor[],
-  askTheDoctor[], evidence[{point, ref, title, url}], usedFromRecord[], limits}`.
+- `POST /api/login {code, persona?}` checks the passcode (`ACCESS_CODE`, case-insensitive) and sets
+  `kimon_session` (HttpOnly, Secure, 1 year) with a role. Returns `{role, askWho}`; `askWho` means the phone
+  should ask who is using it. `POST /api/login {persona: 'kimon'|'family'}` switches a logged-in phone.
+  `DELETE /api/login` logs out.
+- `GET /api/session` returns `{authed, role, sheetConfigured, ai}` or 401.
+- `GET /api/canon` returns the whole sheet canon (shape below); chat notes come without their stored DATA.
+- `POST /api/write {action, payload, by}` proxies one sheet write (actions below). A Kimon session is always
+  written as "Kimon".
+- `POST /api/ask {message, thread[{role:'user'|'leffy', text}], threadId, rid, by, image?{data, type}}` streams
+  NDJSON: `stage` progress, `delta` reply text as it is written, one `answer`, then `learned` when new facts
+  were saved. `answer` = `{urgency, reply, doNow[], watchFor[], askTheDoctor[], evidence[{point, ref, title, url}],
+  usedFromRecord[], replies[], learned[{topic, fact, replaces}], results[], limits}`.
+- `GET /api/answer?rid=` recovers a reply the phone missed.
+- `POST /api/photo {image:{data, type}}` returns `{kind, summary, unreadable, results[{date, test, result, lab,
+  notes, duplicate, dateGuessed}]}`. Saves nothing; the phone writes confirmed rows with `testResult`.
+
+Knowledge bank facts are `note` rows tagged `fact`: `FACT: <text>\nDATA: {"topic","from","replaces?"}`, and
+`FACT REMOVED: <text>\nDATA: {"removes"}` when someone taps Forget.
 
 ## Sheet API (Apps Script, server-to-server only)
 

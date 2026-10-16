@@ -35,3 +35,11 @@ test('history: saved answer data never leaks into the timeline', () => {
   assert.equal(ev[0].answer, 'See his GP this week.');
   assert.doesNotMatch(JSON.stringify(ev), /RID|DATA/);
 });
+test('history: learned facts show plainly, forgotten ones do not', () => {
+  const ev = historyEvents({ notes: [
+    { tsUTC: '2026-10-01T10:00:00Z', by: 'Sam', tag: 'fact', text: 'FACT: Dizzy twice a week\nDATA: {"topic":"symptom"}' },
+    { tsUTC: '2026-10-02T10:00:00Z', by: 'Sam', tag: 'fact', text: 'FACT REMOVED: Dizzy twice a week\nDATA: {"removes":"Dizzy twice a week"}' },
+  ] });
+  assert.equal(ev.length, 1);
+  assert.equal(ev[0].title, 'Leffy learned'); assert.equal(ev[0].detail, 'Dizzy twice a week');
+});

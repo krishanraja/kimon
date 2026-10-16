@@ -2,6 +2,8 @@
 // body check, and talking to the family. Everything is shared with family.
 import { CONTACTS } from './triage.js';
 import { canRecord, startRecording, transcribeBlob, fmtTime } from './recorder.js';
+import { pickPhoto, shrink } from './photo.js';
+import { fmtDate } from './metrics.js';
 import { SYMPTOMS, WHEN, SEVERITY, BODY_CHECK, TAGS, readPlan, todaysHabit, symptomLevel, checkLevel, noteText, melbDay, pendingNudge } from './kimon-model.js';
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -74,6 +76,8 @@ function wireMic(btn, ta) {
   };
 }
 const MIC = '<svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>';
+const CAM = '<svg viewBox="0 0 24 24"><path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2.2l1.4-2h5.8l1.4 2h2.2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z"/><circle cx="12" cy="13" r="3.6"/></svg>';
+const GRID = '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/></svg>';
 
 /* ---------- screens ---------- */
 function fit() {
@@ -99,7 +103,7 @@ function today() {
   const meds = plan.meds.filter(m => m.name);
 
   show(`<div class="fit me-today">
-    <div class="hello"><h1>Hi Kimon</h1><p>${esc(date)}</p></div>
+    <div class="hello"><div><h1>Hi Kimon</h1><p>${esc(date)}</p></div><a class="dash-btn" href="/?full=1">${GRID}<span>Full dashboard</span></a></div>
     ${nudge ? `<section class="kc nudge"><p><span class="heart">♥</span> <b>${esc(/^(app|)$/i.test(nudge.from) ? 'Family' : nudge.from)}:</b> ${esc(nudge.text)}</p><button class="kb small" data-seen>Thanks ♥</button></section>` : ''}
     ${habit ? `<section class="kc one"><p class="kicker">Today's one thing</p><h2>${esc(habit)}</h2>
       ${doneToday ? '<p class="done-line">Done today. Nice work ✓</p>' : '<div class="kbtns"><button class="kb done" data-habit="1">Done ✓</button><button class="kb skip" data-habit="0">Not today</button></div>'}</section>` : ''}
@@ -109,7 +113,10 @@ function today() {
     ${checkDue
       ? `<section class="kc row-card"><div><p class="kicker">Weekly body check</p><p class="big">How has your body been? 5 taps.</p></div><button class="kb go small" data-check>Start</button></section>`
       : `<section class="kc row-card"><p class="big">Body check done this week ✓</p></section>`}
-    <button class="kc talk" data-talk><span class="mic">${MIC}</span><span><b>Tell the family</b><small>Tap and talk. How you're going.</small></span></button>
+    <div class="duo">
+      <button class="kc talk" data-talk><span class="mic">${MIC}</span><span><b>Tell the family</b><small>Tap and talk</small></span></button>
+      <button class="kc talk photo" data-photo><span class="mic">${CAM}</span><span><b>Photo of a result</b><small>Test, scan or letter</small></span></button>
+    </div>
   </div>`, () => {
     root.querySelectorAll('[data-habit]').forEach(b => b.onclick = async () => {
       const done = b.dataset.habit === '1';
@@ -121,6 +128,51 @@ function today() {
     $('[data-log]').onclick = () => logSymptom();
     $('[data-check]')?.addEventListener('click', () => bodyCheck());
     $('[data-talk]').onclick = () => talk();
+    $('[data-photo]').onclick = () => photoResult();
+  });
+}
+
+// Photo of a test result: camera, read it, he checks it, then it is saved.
+async function photoResult() {
+  const file = await pickPhoto({ camera: true });
+  if (!file) return;
+  show(`<div class="fit me-step me-reading"><div class="beat" aria-hidden="true"><span class="beat-glow"></span><svg viewBox="0 0 100 100"><path class="beat-l" d="M50 84 C33 72 15 58 15 39.5 C15 27 24 18.5 35 18.5 C42 18.5 47 22.5 50 28.5 Z"/><path class="beat-r" d="M50 84 C67 72 85 58 85 39.5 C85 27 76 18.5 65 18.5 C58 18.5 53 22.5 50 28.5 Z"/></svg></div><h1>Reading your photo</h1><p class="soft">This takes a few seconds.</p></div>`);
+  let img, out;
+  try {
+    img = await shrink(file);
+    const r = await fetch('/api/photo', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ image: { data: img.data, type: img.type } }), signal: AbortSignal.timeout(70000) });
+    if (r.status === 401) return location.replace('/');
+    out = await r.json().catch(() => ({}));
+    if (!r.ok || !out.ok) throw new Error(out.error || '');
+  } catch (e) {
+    return show(`<div class="fit me-step">${back}<h1>Couldn't read that</h1><p class="soft">${esc(e.message || 'Try again in good light, with the whole page in the photo.')}</p><button class="kb go" data-again>Take it again</button></div>`, () => {
+      $('[data-home]').onclick = today; $('[data-again]').onclick = photoResult;
+    });
+  }
+  const rows = out.results || [];
+  const fresh = rows.filter(x => !x.duplicate);
+  const title = !rows.length ? 'No results found' : fresh.length ? 'Is this right?' : 'Already saved';
+  show(`<div class="fit me-step">${back}<h1>${title}</h1>
+    ${rows.length && !fresh.length ? '<p class="soft">These results are already in your record. Nothing new to add.</p>' : ''}
+    ${out.summary ? `<p class="soft">${esc(out.summary)}</p>` : ''}
+    ${img?.thumb ? `<img class="me-thumb" src="${img.thumb}" alt="Your photo">` : ''}
+    <div class="me-rows">${rows.map((x, i) => `<label class="me-row ${x.duplicate ? 'dup' : ''}"><input type="checkbox" data-r="${i}" ${x.duplicate ? 'disabled' : 'checked'}><span><b>${esc(x.test)}</b> ${esc(x.result)}<small>${esc(fmtDate(x.date, { year: true }) || x.date)}${x.duplicate ? ' · already saved' : x.dateGuessed ? ' · no date on the paper' : ''}</small></span></label>`).join('')}</div>
+    ${out.unreadable ? `<p class="soft small">Couldn't read: ${esc(out.unreadable)}</p>` : ''}
+    <div class="row">${fresh.length ? '<button class="kb go" data-save>Save to my record</button>' : ''}${rows.length && !fresh.length ? '<button class="kb go" data-done>Back to today</button>' : `<button class="kb ${fresh.length ? 'skip2' : 'go'}" data-again>${fresh.length ? 'Retake' : 'Take it again'}</button>`}</div></div>`, () => {
+    $('[data-done]')?.addEventListener('click', today);
+    $('[data-home]').onclick = today;
+    $('[data-again]')?.addEventListener('click', photoResult);
+    $('[data-save]')?.addEventListener('click', async () => {
+      const picks = [...root.querySelectorAll('[data-r]')].filter(c => c.checked && !c.disabled).map(c => rows[+c.dataset.r]);
+      if (!picks.length) { toast('Tick the ones that are right'); return; }
+      let ok = true;
+      for (const x of picks) {
+        (canon.testResults || (canon.testResults = [])).push({ date: x.date, test: x.test, result: x.result, lab: x.lab, notes: x.notes, source: 'Kimon' });
+        ok = (await save('testResult', { date: x.date, test: x.test, result: x.result, lab: x.lab, notes: x.notes })) && ok;
+      }
+      store.set('canon', canon);
+      result('saved', ok, `Saved ${picks.length} result${picks.length === 1 ? '' : 's'}. Your family can see ${picks.length === 1 ? 'it' : 'them'}.`);
+    });
   });
 }
 
@@ -166,6 +218,7 @@ function result(level, ok, savedLine) {
     urgent: ['Get checked today', 'Call your GP for a same-day appointment, or the free Virtual ED video doctor. If it gets worse, call 000.'],
     soon: ['Thanks for telling us', 'Mention it to your GP this week. Your family will keep an eye on it too.'],
     routine: ['Thanks, all noted', 'Nothing worrying in that. Keep going.'],
+    saved: ['All saved', 'Your family and Leffy can see the new results now.'],
   }[level];
   const buttons = level === 'emergency'
     ? '<a class="kb sos" href="tel:000">Call 000</a>'
@@ -222,6 +275,8 @@ function talk() {
   try {
     const r = await fetch('/api/session', { credentials: 'same-origin', signal: AbortSignal.timeout(10000) });
     if (r.status === 401) return location.replace('/');
+    const s = await r.json().catch(() => ({}));
+    document.body.classList.toggle('preview', s.role !== 'kimon');
   } catch { if (!canon) return location.replace('/'); }
   if (canon) today();
   await flush(); await load();

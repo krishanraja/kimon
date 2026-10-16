@@ -5,6 +5,9 @@
     "api/ask.js": {
       "maxDuration": 180,
       "includeFiles": "knowledge/**"
+    },
+    "api/photo.js": {
+      "maxDuration": 60
     }
   },
   "headers": [

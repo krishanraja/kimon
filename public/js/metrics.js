@@ -55,6 +55,10 @@ export function extract(testResults = []) {
   for (const row of rows) {
     const raw = `${row.test} | ${row.result} | ${row.notes || ''}`;
     const t = norm(raw);
+    // A row can also name the measure in its test name ("LDL-C" | "2.1 mmol/L"),
+    // which is how a photographed report usually comes through.
+    const named = norm(`${row.test}: ${row.result}`);
+    const get = re => grab(t, re) ?? grab(named, re);
     if (/calcium|agatston|\bCAC\b/i.test(row.test)) {
       const total = grab(t, /Total\s*(?:score)?\s*[:=]?\s*([\d.]+)/i) ?? grab(t, /([\d.]+)\s*Agatston/i);
       const vessels = {};
@@ -66,18 +70,18 @@ export function extract(testResults = []) {
       put('cac', total, row, { vessels, percentile: pct ? (pct[2] ? `${pct[1]}th to ${pct[2]}th` : `${pct[1]}th`) : '' });
       continue;
     }
-    if (/lipid|chol|LDL/i.test(row.test) || /\bLDL\b/i.test(t)) {
-      put('ldl', grab(t, /\bLDL\s*[:=]?\s*([\d.]+)/), row);
-      put('nonhdl', grab(t, /NONHDL\s*[:=]?\s*([\d.]+)/), row);
-      put('hdl', grab(t, /\bHDL\s*[:=]?\s*([\d.]+)/), row);
-      put('trig', grab(t, /\bTrig\w*\s*[:=]?\s*([\d.]+)/i), row);
-      put('total', grab(t, /\bTotal(?:\s*chol\w*)?\s*[:=]?\s*([\d.]+)/i), row);
+    if (/lipid|chol|LDL|HDL|trig/i.test(row.test) || /\bLDL\b/i.test(t)) {
+      put('ldl', get(/\bLDL\s*[:=]?\s*([\d.]+)/), row);
+      put('nonhdl', get(/NONHDL\s*[:=]?\s*([\d.]+)/), row);
+      put('hdl', get(/\bHDL\s*[:=]?\s*([\d.]+)/), row);
+      put('trig', get(/\bTrig\w*\s*[:=]?\s*([\d.]+)/i), row);
+      put('total', get(/\bTotal(?:\s*chol\w*)?\s*[:=]?\s*([\d.]+)/i) ?? (/^\s*(total\s*)?cholesterol\b/i.test(row.test) ? get(/chol\w*\s*[:=]?\s*([\d.]+)/i) : null), row);
     }
     if (/glucose/i.test(row.test)) put('glucose', grab(t, /([\d.]+)\s*mmol/i), row, { fasting: /fasting/i.test(raw) });
-    put('hba1c', grab(t, /HbA1c\s*[:=]?\s*([\d.]+)/i), row);
-    put('egfr', grab(t, /eGFR[^\d]{0,12}(\d{1,3})/i), row);
-    put('creatinine', grab(t, /creatinine\s*[:=]?\s*([\d.]+)/i), row);
-    put('hb', grab(t, /\bHb\s*[:=]?\s*([\d.]+)/), row, { fbeNormal: /within normal limits/i.test(raw) && /blood exam|FBE|full blood/i.test(raw) });
+    put('hba1c', get(/HbA1c\s*[:=]?\s*([\d.]+)/i), row);
+    put('egfr', get(/eGFR[^\d]{0,12}(\d{1,3})/i), row);
+    put('creatinine', get(/creatinine\s*[:=]?\s*([\d.]+)/i), row);
+    put('hb', get(/\bHb\s*[:=]?\s*([\d.]+)/), row, { fbeNormal: /within normal limits/i.test(raw) && /blood exam|FBE|full blood/i.test(raw) });
     const bp = raw.match(/(?:blood pressure|\bBP\b)[^\d]{0,15}(\d{2,3})\s*\/\s*(\d{2,3})/i);
     if (bp) put('bp', num(bp[1]), row, { dia: num(bp[2]) });
   }

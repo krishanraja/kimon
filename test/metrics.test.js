@@ -63,3 +63,14 @@ test('situation line', () => {
   assert.match(s, /LDL 3.6\) with no treatment recorded/);
   assert.match(s, /reported 1 Mar/);
 });
+test('rows that name the measure in the test name (as photos produce)', () => {
+  const m = extract([
+    { date: '2026-10-12', test: 'LDL-C', result: '2.1 mmol/L' },
+    { date: '2026-10-12', test: 'HDL-C', result: '1.2 mmol/L' },
+    { date: '2026-10-12', test: 'Triglycerides', result: '1.4 mmol/L' },
+    { date: '2026-10-12', test: 'Total cholesterol', result: '4.1 mmol/L' },
+    { date: '2026-10-12', test: 'HbA1c', result: '5.6 %' },
+  ]);
+  assert.equal(m.ldl.value, 2.1); assert.equal(m.hdl.value, 1.2); assert.equal(m.trig.value, 1.4);
+  assert.equal(m.total.value, 4.1); assert.equal(m.hba1c.value, 5.6);
+});

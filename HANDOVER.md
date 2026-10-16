@@ -1,5 +1,21 @@
 # HANDOVER: for the next AI taking over
 
+## 2026-10-16 update
+- Login is one passcode from Vercel env `ACCESS_CODE` (no default in code: the
+  repo is public and the old defaults were readable by anyone). After the
+  code the phone picks Kimon or family. Kimon lands on `/me` with a Full
+  dashboard button; family lands on the family app.
+- Ask is now "Ask Leffy", a chat (`public/js/chat.js`, `public/js/leffy.js`)
+  with streamed replies, predicted reply pills, voice and photos.
+- Knowledge bank (`public/js/knowledge-bank.js`) distils the whole sheet;
+  learned facts are `Notes` tagged `fact`. No Apps Script redeploy needed:
+  everything uses the existing `note` and `testResult` actions.
+- Photo of a test result: `/api/photo` and the chat read it; people confirm
+  before rows are written.
+- `scripts/simulate.mjs` runs a month of Kimon and family use through the real
+  Code.gs in an emulator and checks every row. Run it after any change to the
+  data layer.
+
 ## 2026-10-13 update (supersedes "BROKEN" items below)
 - App rebuilt in this repo (`public/`, `api/`) and deployed on Vercel at
   laurenthermos.com with access code login + 1-year cookie. Muse artifact is
