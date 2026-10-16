@@ -14,7 +14,13 @@ One passcode for everyone. After it, the phone asks once who is using it:
   he adds is attributed to "Kimon" by the server, whatever the phone says.
 - **Family** lands on the family app as before.
 
-Settings can switch a phone between the two. An optional `KIMON_CODE` logs
+Each person picks their own name from the family list (Vercel env `PEOPLE`,
+kept out of this public repo), or "Someone else" with their name and what
+they call Kimon. Leffy and the app then speak to that person: Kimon hears
+"you"; someone who calls him Dad hears "your dad" (and sees "Ask Dad");
+someone who calls him Kim hears "Kim". Anyone not on the list hears
+"Kimon" unless they pick otherwise. Each person has their own chat history.
+Settings can switch a phone between people. An optional `KIMON_CODE` logs
 straight in as Kimon. Changing `ACCESS_CODE` logs every phone out.
 
 ## What it does
@@ -80,6 +86,7 @@ secret; the previous Muse build baked it into the page, this one does not.
 | `SHEET_API_SECRET` | yes | the `APP_SECRET` value in the deployed Apps Script |
 | `ACCESS_CODE` | yes | the one passcode; no default (the repo is public); changing it logs everyone out |
 | `KIMON_CODE` | no | optional second code that opens straight as Kimon |
+| `PEOPLE` | no | family list, JSON: `[{"name":"Kimon","aliases":["Kim"],"patient":true},{"name":"...","aliases":["..."],"calls":"Dad"}]`; `calls` is what that person calls Kimon |
 | `OPENAI_API_KEY` | no | best transcription (gpt-4o-transcribe) |
 | `SHEET_API_URL` | no | defaults to the live Apps Script `/exec` URL |
 | `ANTHROPIC_API_KEY` | no | if set, Ask calls Anthropic directly |

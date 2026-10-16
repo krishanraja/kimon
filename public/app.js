@@ -6,6 +6,7 @@ import { mountDad, refreshDad, dadHome } from '/js/dad.js';
 import { resultsText } from '/js/speech.js';
 import { canRecord, startRecording, transcribeBlob } from '/js/recorder.js';
 import { mountChat, refreshChat, sendToChat, checkPending, stopSpeaking, photoToChat, showChat } from '/js/chat.js';
+import { person, matchPerson, CALL_OPTIONS } from '/js/people.js';
 
 /* ---------------- tiny helpers ---------------- */
 const $ = (s, el = document) => el.querySelector(s);
@@ -14,7 +15,9 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem('kimon.' + k); return v ? JSON.parse(v) : d; } catch { return d; } },
   set(k, v) { try { localStorage.setItem('kimon.' + k, JSON.stringify(v)); } catch { /* private mode */ } },
 };
-const who = () => session.role === 'kimon' ? 'Kimon' : (store.get('who', '') || 'app').slice(0, 40);
+// The person on this phone, and how Kimon is spoken about to them.
+const me = () => person({ role: session.role, who: store.get('who', ''), calls: store.get('calls', ''), roster: store.get('people', []) });
+const who = () => (me().kimon ? 'Kimon' : me().name || 'app').slice(0, 40);
 const linkify = s => esc(s).replace(/\b(vved\.org\.au)\b/g, '<a href="https://$1" target="_blank" rel="noopener">$1</a>')
   .replace(/\b(000|1300 60 60 24|1800 022 222)\b/g, m => `<a href="tel:${m.replace(/\s/g, '')}">${m}</a>`);
 
@@ -101,6 +104,7 @@ $('#loginForm').addEventListener('submit', async e => {
     const j = await r.json().catch(() => ({}));
     if (!r.ok) { msg.textContent = j.error || 'That code is not right'; $('#code').select(); return; }
     $('#code').value = '';
+    if (Array.isArray(j.people)) store.set('people', j.people);
     if (j.role === 'kimon') return location.replace('/me');
     if (j.askWho) return askWho();
     boot();
@@ -108,26 +112,56 @@ $('#loginForm').addEventListener('submit', async e => {
   finally { btn.disabled = false; }
 });
 
-// The passcode is shared, so the phone says who is using it.
+// The passcode is shared, so the phone says who is using it: Kimon, someone
+// on the family list (Vercel env PEOPLE), or someone else.
+const ICON_HEART = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.3-7-9.4C5 7.9 7 6 9.3 6c1.1 0 2.1.5 2.7 1.3C12.6 6.5 13.6 6 14.7 6 17 6 19 7.9 19 10.6 19 15.7 12 20 12 20z"/></svg>';
+const CHEVRON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>';
+function whoOptions(current) {
+  const family = store.get('people', []).filter(p => !p.patient);
+  const opt = (id, ic, cls, title, sub) => `<button class="who-opt" type="button" data-who="${esc(id)}" aria-pressed="${current === id}"><span class="who-ic ${cls}">${ic}</span><span class="who-t"><b>${esc(title)}</b><small>${esc(sub)}</small></span>${CHEVRON}</button>`;
+  return opt('kimon', 'K', 'k', "I'm Kimon", 'My day, my tablets, telling the family')
+    + family.map(p => opt(p.name, esc(p.name.charAt(0)), 'f', p.name, 'His record, check-ins and Leffy')).join('')
+    + (family.length ? opt('other', '+', 'o', 'Someone else', 'Family or a friend helping out') : opt('other', ICON_HEART, 'f', "I'm family", 'His record, check-ins and Leffy'));
+}
+function callChips(sel) {
+  return `<div class="nudge-picks" role="group" aria-label="What do you call Kimon?">${CALL_OPTIONS.map(c => `<button type="button" class="pill ${sel === c ? 'on' : ''}" data-calls="${esc(c)}">${esc(c)}</button>`).join('')}</div>`;
+}
 function askWho() {
   $('#loginCode').hidden = true; $('#loginWho').hidden = false;
   $('#whoName').hidden = true; $('#whoPick').hidden = false;
-  $('#nameInput').value = store.get('who', '');
+  $('#whoPick .who-list').innerHTML = whoOptions('');
+  $('#nameInput').value = '';
+  $('#callsPick').innerHTML = callChips(store.get('calls', ''));
 }
 async function setPersona(persona) {
   const r = await fetch('/api/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ persona }) }).catch(() => null);
   if (!r || !r.ok) { toast('No connection. Try again.'); return false; }
   return true;
 }
+// Choosing who you are: one tap for anyone on the list.
+async function choose(id, { reload = false } = {}) {
+  if (id === 'kimon') { if (await setPersona('kimon')) { store.set('role', 'kimon'); location.replace('/me'); } return; }
+  store.set('who', id); store.set('calls', '');
+  if (!(await setPersona('family'))) return;
+  store.set('role', 'family');
+  if (reload) location.replace('/'); else boot();
+}
 $('#loginWho').addEventListener('click', async e => {
+  const c = e.target.closest('[data-calls]');
+  if (c) { $('#callsPick').querySelectorAll('[data-calls]').forEach(x => x.classList.toggle('on', x === c)); return; }
   const b = e.target.closest('[data-who]'); if (!b) return;
-  if (b.dataset.who === 'kimon') { if (await setPersona('kimon')) location.replace('/me'); return; }
+  if (b.dataset.who !== 'other') return choose(b.dataset.who);
   $('#whoPick').hidden = true; $('#whoName').hidden = false; setTimeout(() => $('#nameInput').focus(), 50);
 });
 $('#whoName').addEventListener('submit', async e => {
   e.preventDefault();
-  store.set('who', $('#nameInput').value.trim());
-  if (await setPersona('family')) boot();
+  const name = $('#nameInput').value.trim();
+  const match = matchPerson(store.get('people', []), name);
+  if (match?.patient) return choose('kimon');
+  if (match) return choose(match.name);
+  store.set('who', name);
+  store.set('calls', $('#callsPick .pill.on')?.dataset.calls || '');
+  if (await setPersona('family')) { store.set('role', 'family'); boot(); }
 });
 
 async function boot() {
@@ -135,6 +169,7 @@ async function boot() {
     const r = await fetch('/api/session', { credentials: 'same-origin', signal: AbortSignal.timeout(10000) });
     if (r.status === 401) return showLogin();
     session = await r.json();
+    if (Array.isArray(session.people)) store.set('people', session.people);
   } catch {
     if (!canon) return showLogin(); // never seen data on this phone; need the network once
     session = { sheetConfigured: true, role: store.get('role', 'family') };
@@ -144,6 +179,8 @@ async function boot() {
   if (isKimon() && !new URLSearchParams(location.search).has('full')) return location.replace('/me');
   document.body.classList.toggle('as-kimon', isKimon());
   $('#homeBtn').hidden = !isKimon();
+  // Labels speak the way this person does: "Ask Dad", "Ask Kim".
+  $('[data-go="check"] span').textContent = isKimon() ? 'Check-in' : `Ask ${me().him}`;
   $('#login').hidden = true; $('#app').hidden = false;
   buildCheck(); buildRecord(); buildDad(); buildChat();
   await flushQueue();
@@ -256,7 +293,7 @@ function listen(onText, onState) {
 const isKimon = () => session.role === 'kimon';
 function openAsk(text) { go('ask'); sendToChat(text); }
 function buildChat() {
-  mountChat($('#chat'), { canon: () => canon, role: () => session.role, who, save, toast, listen, openSheet, showLogin, reload: () => loadCanon() });
+  mountChat($('#chat'), { canon: () => canon, role: () => session.role, who, me, people: () => store.get('people', []), choose: id => choose(id, { reload: true }), save, toast, listen, openSheet, showLogin, reload: () => loadCanon(), setSomeone });
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkPending(); });
 
@@ -357,12 +394,12 @@ function showCheckResult(verdict, r) {
 
 /* ---------------- RECORD ---------------- */
 function buildDad() {
-  mountDad($('#dad'), { canon: () => canon, save, toast, fit, listen, who, openAsk });
+  mountDad($('#dad'), { canon: () => canon, save, toast, fit, listen, who, me, openAsk });
 }
 
 function buildRecord() {
   mountRecord($('#rec'), {
-    canon: () => canon, session: () => session, save, toast, fit, listen,
+    canon: () => canon, session: () => session, save, toast, fit, listen, me,
     openAsk, addPhoto: () => { go('ask'); photoToChat(); },
     onTasksChanged: () => { store.set('canon', canon); if (!checkTouched) buildCheck(); },
   });
@@ -412,27 +449,44 @@ async function shareBrief() {
 }
 
 $('#shareBtn').addEventListener('click', shareBrief);
-$('#gearBtn').addEventListener('click', () => openSheet(`
-  <p class="kicker">Settings</p>
+$('#gearBtn').addEventListener('click', () => settingsSheet());
+function settingsSheet() {
+  const m = me(), listed = store.get('people', []).some(p => !p.patient && p.name === m.name);
+  const current = m.kimon ? 'kimon' : listed ? m.name : 'other';
+  openSheet(`
   <p class="kicker">Who is using this phone</p>
-  <div class="seg" role="group" aria-label="Who is using this phone">
-    <button type="button" data-persona="family" aria-pressed="${!isKimon()}">Family</button>
-    <button type="button" data-persona="kimon" aria-pressed="${isKimon()}">Kimon</button>
+  <div class="who-list compact">${whoOptions(current)}</div>
+  <div class="someone" ${current === 'other' ? '' : 'hidden'}>
+    <label class="kicker" for="whoName">Your name, shown next to what you add</label>
+    <input id="whoName" maxlength="40" placeholder="First name">
+    <p class="kicker">What do you call Kimon?</p>
+    <div id="callsSet">${callChips(current === 'other' && m.known ? m.calls : '')}</div>
   </div>
-  ${isKimon() ? '' : `<label class="kicker" for="whoName">Your name, shown next to what you add</label>
-  <input id="whoName" maxlength="40" placeholder="First name">`}
   <button class="btn" data-out>Log out on this phone</button>
-  <button class="btn primary" data-close>Done</button>`, sheet => {
-  const w = sheet.querySelector('#whoName');
-  if (w) { w.value = store.get('who', ''); w.oninput = () => store.set('who', w.value.trim()); }
-  sheet.querySelectorAll('[data-persona]').forEach(b => b.onclick = async () => {
-    const p = b.dataset.persona;
-    if ((p === 'kimon') === isKimon()) return;
-    if (!(await setPersona(p))) return;
-    store.set('role', p);
-    location.replace(p === 'kimon' ? '/me' : '/');
+  <button class="btn primary" data-close>Done</button>`, (sheet, close) => {
+    const w = sheet.querySelector('#whoName'), box = sheet.querySelector('.someone');
+    w.value = current === 'other' ? store.get('who', '') : '';
+    w.oninput = () => store.set('who', w.value.trim());
+    sheet.querySelectorAll('[data-calls]').forEach(c => c.onclick = () => {
+      sheet.querySelectorAll('[data-calls]').forEach(x => x.classList.toggle('on', x === c)); store.set('calls', c.dataset.calls);
+    });
+    sheet.querySelectorAll('[data-who]').forEach(b => b.onclick = () => {
+      if (b.dataset.who === 'other') { box.hidden = false; sheet.querySelectorAll('[data-who]').forEach(x => x.setAttribute('aria-pressed', String(x === b))); w.focus(); return; }
+      if (b.dataset.who === current) return;
+      choose(b.dataset.who, { reload: true });
+    });
+    sheet.querySelector('[data-close]').onclick = async () => {
+      const someone = !box.hidden;
+      close();
+      if (!someone) return;
+      // Labels and Leffy follow the new name.
+      if (isKimon() && store.get('who', '')) { if (await setPersona('family')) { store.set('role', 'family'); location.replace('/'); } return; }
+      if (!isKimon()) location.replace('/');
+    };
+    sheet.querySelector('[data-out]').onclick = async () => { await fetch('/api/login', { method: 'DELETE' }); localStorage.clear(); location.replace('/'); };
   });
-  sheet.querySelector('[data-out]').onclick = async () => { await fetch('/api/login', { method: 'DELETE' }); localStorage.clear(); location.replace('/'); };
-}));
+}
+// Leffy can ask who he is talking to, then hand over to Settings.
+function setSomeone() { settingsSheet(); }
 
 boot();

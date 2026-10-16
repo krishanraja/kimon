@@ -10,6 +10,8 @@ const LEVEL = { emergency: ['Emergency', 'hot'], urgent: ['Today', 'hot'], soon:
 const MIC = '<svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>';
 
 export function mountDad(el, context) { root = el; ctx = context; render(); }
+// What this person calls him: "Dad", "Kim", "Kimon".
+const him = () => ctx.me?.().him || 'Kimon';
 export function refreshDad() { if (root) render(); }
 export function dadHome() { view = 'home'; if (root) render(); }
 
@@ -38,7 +40,7 @@ function home(canon) {
   ].sort((a, b) => String(b.ts).localeCompare(String(a.ts))).slice(0, 3);
 
   root.innerHTML = `<div class="fit dad-home">
-    <div class="dad-top"><h2>Dad this week</h2><a class="link" href="/me">See his app ↗</a></div>
+    <div class="dad-top"><h2>${esc(him())} this week</h2><a class="link" href="/me">See his app ↗</a></div>
     ${m.alerts.length ? `<section class="dad-alert ${LEVEL[m.alerts[0].level][1]}"><p class="kicker">Needs attention · ${esc(ago(m.alerts[0].ts))}</p><p>${esc(m.alerts[0].text.replace(/^(SYMPTOM|BODY CHECK):\s*/, ''))}</p>
       <button class="pill" data-ask>Ask what to do</button></section>` : ''}
     <div class="dad-stats">
@@ -48,18 +50,18 @@ function home(canon) {
     </div>
     <section class="card dad-feed"><p class="kicker">Lately · last seen ${esc(ago(m.lastSeen))}</p>
       ${feed.length ? feed.map(f => `<div class="ev"><i class="ev-kind ${f.tone}">${f.kind}</i><span class="ev-body"><b>${esc(ago(f.ts))}</b>${f.chip ? ` <i class="chip ${f.chip[1]}">${f.chip[0]}</i>` : ''}<span>${esc(f.text)}</span></span></div>`).join('')
-        : '<p class="soft">Nothing yet. Once Dad starts using his app, his logs show up here.</p>'}
+        : '<p class="soft">Nothing yet. Once ${esc(him())} starts using his app, his logs show up here.</p>'}
     </section>
     <div class="row dad-actions"><button class="btn" data-plan>Care plan</button><button class="btn primary grow" data-nudge>Send a nudge</button></div>
   </div>`;
   root.querySelector('[data-plan]').onclick = () => { view = 'plan'; render(); };
   root.querySelector('[data-nudge]').onclick = () => nudgeSheet(canon);
-  root.querySelector('[data-ask]')?.addEventListener('click', () => ctx.openAsk(`Dad logged this: "${m.alerts[0].text.replace(/^(SYMPTOM|BODY CHECK):\s*/, '')}". What should we do?`));
+  root.querySelector('[data-ask]')?.addEventListener('click', () => ctx.openAsk(`${him()} logged this: "${m.alerts[0].text.replace(/^(SYMPTOM|BODY CHECK):\s*/, '')}". What should we do?`));
 }
 
 const NUDGES = ['Proud of you ♥', 'Time for your walk?', 'Did you take your tablets?', 'Can you do your body check?', 'How are you feeling today?'];
 function nudgeSheet(canon) {
-  openSheet(`<p class="kicker">Nudge Dad</p>
+  openSheet(`<p class="kicker">Nudge ${esc(him())}</p>
     <div class="nudge-picks">${NUDGES.map(n => `<button class="pill" data-n="${esc(n)}">${esc(n)}</button>`).join('')}</div>
     <label class="sr" for="nudgeText">Your message</label>
     <textarea id="nudgeText" rows="2" maxlength="300" placeholder="Or write your own"></textarea>
@@ -79,7 +81,7 @@ function nudgeSheet(canon) {
       (canon.notes || (canon.notes = [])).push({ tsUTC: new Date().toISOString(), by: ctx.who(), tag: TAGS.nudge, text: `NUDGE: ${text}` });
       close();
       const r = await ctx.save('note', { text: `NUDGE: ${text}`, tag: TAGS.nudge });
-      ctx.toast(r.ok ? 'Sent. Dad sees it on his Today screen.' : 'Saved on this phone, will send');
+      ctx.toast(r.ok ? `Sent. ${him()} sees it on his Today screen.` : 'Saved on this phone, will send');
     };
   });
 }
@@ -123,7 +125,7 @@ function planView(canon) {
       (canon.profile || (canon.profile = {})).care_plan = value;
       view = 'home'; render();
       const r = await ctx.save('profile', { key: 'care_plan', value });
-      ctx.toast(r.ok ? 'Care plan saved. Dad sees it from today.' : 'Saved on this phone, will sync');
+      ctx.toast(r.ok ? `Care plan saved. ${him()} sees it from today.` : 'Saved on this phone, will sync');
     };
     requestAnimationFrame(() => root.querySelectorAll('.fit').forEach(ctx.fit));
   };

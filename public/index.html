@@ -36,16 +36,15 @@
     <div id="whoPick">
       <h1>Who's using this phone?</h1>
       <p class="soft">So Beside opens on the right screen. You can change it in Settings.</p>
-      <div class="who-list">
-        <button class="who-opt" type="button" data-who="kimon"><span class="who-ic k">K</span><span class="who-t"><b>I'm Kimon</b><small>My day, my tablets, telling the family</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></button>
-        <button class="who-opt" type="button" data-who="family"><span class="who-ic f"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.3-7-9.4C5 7.9 7 6 9.3 6c1.1 0 2.1.5 2.7 1.3C12.6 6.5 13.6 6 14.7 6 17 6 19 7.9 19 10.6 19 15.7 12 20 12 20z"/></svg></span><span class="who-t"><b>I'm family</b><small>His record, check-ins and Leffy</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></button>
-      </div>
+      <div class="who-list"></div>
     </div>
     <form id="whoName" hidden>
       <h1>What should we call you?</h1>
       <p class="soft">Your name shows next to what you add, so everyone knows who did what.</p>
       <label for="nameInput" class="sr">Your first name</label>
       <input id="nameInput" maxlength="40" autocomplete="given-name" placeholder="First name">
+      <p class="kicker">What do you call Kimon?</p>
+      <div id="callsPick"></div>
       <button class="btn primary" type="submit">Continue</button>
     </form>
   </div>

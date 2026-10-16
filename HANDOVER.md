@@ -1,6 +1,9 @@
 # HANDOVER: for the next AI taking over
 
 ## 2026-10-16 update
+- Who is chatting decides how Kimon is named: the family list is Vercel env
+  `PEOPLE` (names stay out of the repo), matched by name or nickname; see
+  `public/js/people.js`. Chats are stored per person on each phone.
 - Login is one passcode from Vercel env `ACCESS_CODE` (no default in code: the
   repo is public and the old defaults were readable by anyone). After the
   code the phone picks Kimon or family. Kimon lands on `/me` with a Full

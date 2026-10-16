@@ -1,5 +1,6 @@
 import { isAuthed } from '../lib/auth.js';
 import { aiProvider } from '../lib/ai.js';
+import { roster } from '../lib/people.js';
 
 export default function handler(req, res) {
   let role = false;
@@ -9,5 +10,6 @@ export default function handler(req, res) {
     ok: true, authed: true, role,
     sheetConfigured: Boolean(process.env.SHEET_API_SECRET),
     ai: aiProvider(req) || 'none',
+    people: roster(),
   });
 }

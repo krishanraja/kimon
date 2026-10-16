@@ -14,6 +14,8 @@ process.env.SESSION_SECRET ||= crypto.randomBytes(32).toString('hex');
 
 // Local passcode only. Production reads ACCESS_CODE from Vercel env.
 process.env.ACCESS_CODE ||= 'local';
+// Invented family list; production reads PEOPLE from Vercel env.
+process.env.PEOPLE ||= JSON.stringify([{ name: 'Kimon', aliases: ['Kim'], patient: true }, { name: 'Sam', aliases: ['Sammy'], calls: 'Dad' }, { name: 'Alex', calls: 'Kim' }]);
 
 if (process.env.MOCK_SHEET) {
   // The real apps-script/Code.gs, run against an in-memory sheet. Invented,

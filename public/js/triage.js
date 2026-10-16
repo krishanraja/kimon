@@ -63,7 +63,7 @@ export const CONTACTS = {
     title: 'Call 000 now',
     lines: [
       'He calls 000 himself, or anyone with him does. Ask for an ambulance. He should not drive.',
-      'You are overseas, so you cannot dial 000. If you are on the phone with him, tell him to hang up and call 000 now. If he cannot, call someone in Melbourne who can.',
+      'If you are overseas you cannot dial 000. If you are on the phone with him, tell him to hang up and call 000 now. If he cannot, call someone in Melbourne who can.',
       'While waiting: sit or lie down, stop all activity, unlock the front door. Only chew aspirin if the 000 operator tells him to.',
     ],
   },
@@ -86,4 +86,12 @@ export const CONTACTS = {
     title: 'No warning signs detected',
     lines: ['Keep it on the list for the next GP or cardiology visit.'],
   },
+};
+
+// The same advice, said to Kimon himself (he is in Melbourne).
+export const CONTACTS_SELF = {
+  emergency: { title: 'Call 000 now', lines: ['Call 000 and ask for an ambulance. Do not drive yourself.', 'Sit or lie down, stop what you are doing, and unlock the front door. Only chew aspirin if the 000 operator tells you to.'] },
+  urgent: { title: 'Get seen today', lines: ['Victorian Virtual ED: a free video call with a doctor, any time. vved.org.au', 'NURSE-ON-CALL 1300 60 60 24, any time.', 'Or ask your GP for an urgent appointment today. If it gets worse, call 000.'] },
+  soon: { title: 'Book your GP this week', lines: ['Mention it to your GP, along with your calcium score.', 'healthdirect 1800 022 222 any time if you want to talk it through sooner.'] },
+  routine: { title: 'No warning signs', lines: ['Keep it on the list for your next GP or cardiology visit.'] },
 };

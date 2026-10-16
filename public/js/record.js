@@ -1,11 +1,12 @@
 // His record: a hub (where things are, what's next) with one-screen spokes.
 // Everything the user sees is derived from the sheet canon; nothing is mocked.
 import { extract, resultCards, situation, fmtDate, daysUntil, STAGES, LIPID_EXTRAS, REF_URLS } from './metrics.js';
-import { plainTask, taskGroup, taskHow, taskStatus, GROUPS, historyEvents } from './record-model.js';
+import { plainTask, taskGroup, taskHow, taskStatus, groupsFor, historyEvents } from './record-model.js';
 
 let ctx, root, view = 'home', resultIdx = 0, todoGroup = null, qPage = 0, hPage = 0;
 
 export function mountRecord(el, context) { root = el; ctx = context; render(); }
+const him = () => ctx.me?.().him || 'Kimon';
 export function refreshRecord() { if (root) render(); }
 export function recordHome() { view = 'home'; if (root) render(); }
 
@@ -38,7 +39,7 @@ function nextUp(canon) {
   const st = stageOf(canon);
   if (!st.appt && st.i <= 2) {
     const g = gaps.find(x => /appointment/i.test(x.gap));
-    return { title: 'Find out when his cardiology appointment is', why: 'Everything else waits on this. Ask Dad or his GP whether the referral was sent and when he will be seen.', gap: g };
+    return { title: 'Find out when his cardiology appointment is', why: `Everything else waits on this. Ask ${him()} or his GP whether the referral was sent and when he will be seen.`, gap: g };
   }
   const g = gaps[0];
   return g ? { title: plainTask(g), why: g.whatAnswersIt, gap: g } : null;
@@ -267,7 +268,7 @@ const STATUS_LABEL = { open: 'To do', call: 'On next call', done: 'Found out' };
 function todoView(canon) {
   const gaps = canon.gaps || [];
   const done = gaps.filter(g => g.status === 'closed').length;
-  const groups = GROUPS.map(([id, label, blurb]) => ({ id, label, blurb, items: gaps.filter(g => taskGroup(g) === id) })).filter(g => g.items.length);
+  const groups = groupsFor(him()).map(([id, label, blurb]) => ({ id, label, blurb, items: gaps.filter(g => taskGroup(g) === id) })).filter(g => g.items.length);
   if (!todoGroup || !groups.some(g => g.id === todoGroup)) todoGroup = (groups.find(g => g.items.some(x => x.status !== 'closed')) || groups[0] || {}).id;
   const grp = groups.find(g => g.id === todoGroup);
   const order = { call: 0, open: 1, done: 2 };
@@ -295,7 +296,7 @@ function taskSheet(canon, g) {
   if (!g) return;
   if (/appointment/i.test(g.gap) && g.status !== 'closed') return stageSheet(canon);
   const st = taskStatus(g);
-  const grp = GROUPS.find(x => x[0] === taskGroup(g));
+  const grp = groupsFor(him()).find(x => x[0] === taskGroup(g));
   openSheet(`
     <p class="kicker">${esc(grp ? grp[1] : 'To do')}</p>
     <h3 class="sheet-title">${esc(plainTask(g))}</h3>
@@ -474,7 +475,7 @@ const KIND = {
 const URG = { emergency: ['Emergency', 'hot'], urgent: ['Today', 'hot'], soon: ['This week', 'warm'], routine: ['No red flags', 'ok'] };
 
 function historyView(canon) {
-  const ev = historyEvents(canon);
+  const ev = historyEvents(canon, { him: him() });
   const pages = chunk(ev, innerHeight < 700 ? 4 : 5);
   hPage = Math.min(hPage, pages.length - 1);
   let lastDate = '';

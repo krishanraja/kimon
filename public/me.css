@@ -82,4 +82,4 @@ body.me { font-size: 20px; }
 .small { font-size: .78em; }
 .kb.skip2 { background: var(--card); color: var(--ink); box-shadow: var(--shadow); flex: none; }
 .kc.level.saved { background: linear-gradient(160deg, #3b8160, var(--routine)); }
-body.preview .me-main::before { content: "Preview of Dad's screen"; display: block; text-align: center; font-size: 13px; font-weight: 700; color: var(--urgent); margin-bottom: 6px; }
+body.preview .me-main::before { content: "Preview of Kimon's screen"; display: block; text-align: center; font-size: 13px; font-weight: 700; color: var(--urgent); margin-bottom: 6px; }

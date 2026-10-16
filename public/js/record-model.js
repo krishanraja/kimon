@@ -27,11 +27,13 @@ export function taskGroup(g) {
   if (/\bGP\b/.test(t)) return 'gp';
   return 'dad';
 }
-export const GROUPS = [
-  ['dad', 'Ask Dad', 'Things only he can tell you. Add them to your next call.'],
+// him: what this person calls Kimon ("Dad", "Kim").
+export const groupsFor = (him = 'Kimon') => [
+  ['dad', `Ask ${him}`, 'Things only he can tell you. Add them to your next call.'],
   ['gp', 'Ask his GP', 'Quick things his GP can check or order.'],
   ['waiting', 'Waiting on', 'These get answered at cardiology. Nothing to do yet but follow up.'],
 ];
+export const GROUPS = groupsFor('Dad');
 
 // "Ask cardiologist Q4/Q5" -> the actual question text.
 export function taskHow(g, questions = []) {
@@ -79,7 +81,7 @@ function firstSentence(s) { return clip(String(s || '').split(/(?<=[.!?])\s/)[0]
 function testTitle(t) { const s = String(t).replace(/\s*\([^)]*\)\s*$/, '').replace(/^CT /, '').trim(); return s.charAt(0).toUpperCase() + s.slice(1); }
 
 // Timeline events, newest first. Test rows by an automated tester are hidden.
-export function historyEvents(canon) {
+export function historyEvents(canon, { him = 'Kimon' } = {}) {
   const ev = [];
   for (const r of canon.testResults || []) {
     ev.push({ key: dateKey(r.date), ts: '', kind: /calcium|CT/i.test(r.test) ? 'scan' : 'bloods', title: testTitle(r.test), detail: summariseTest(r) });
@@ -101,9 +103,9 @@ export function historyEvents(canon) {
       if (/^FACT REMOVED:/.test(text)) continue;
       ev.push({ key: k, ts: n.tsUTC, kind: 'note', title: 'Leffy learned', detail: clip(text.split('\nDATA: ')[0].replace(/^FACT:\s*/, ''), 90) });
     } else if (n.tag === 'symptom-log' || n.tag === 'body-check') {
-      ev.push({ key: k, ts: n.tsUTC, kind: 'symptom', title: n.tag === 'body-check' ? 'Dad did his body check' : 'Dad logged a symptom', detail: clip(text.split('\nDATA: ')[0].replace(/^(SYMPTOM|BODY CHECK):\s*/, ''), 90) });
+      ev.push({ key: k, ts: n.tsUTC, kind: 'symptom', title: n.tag === 'body-check' ? `${him} did his body check` : `${him} logged a symptom`, detail: clip(text.split('\nDATA: ')[0].replace(/^(SYMPTOM|BODY CHECK):\s*/, ''), 90) });
     } else if (n.tag === 'kimon-says') {
-      ev.push({ key: k, ts: n.tsUTC, kind: 'note', title: 'Dad said', detail: clip(text.replace(/^KIMON SAYS:\s*/, ''), 90) });
+      ev.push({ key: k, ts: n.tsUTC, kind: 'note', title: `${him} said`, detail: clip(text.replace(/^KIMON SAYS:\s*/, ''), 90) });
     } else if (n.tag === 'nudge') {
       ev.push({ key: k, ts: n.tsUTC, kind: 'note', title: `Nudge from ${n.by}`, detail: clip(text.replace(/^NUDGE:\s*/, ''), 90) });
     } else if (/symptom/i.test(n.tag)) {

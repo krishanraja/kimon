@@ -2,7 +2,7 @@
 // suggested reply, or send a photo of a test result. Every message is
 // answered from his record, the knowledge bank and the evidence corpus, and
 // logged to the sheet; facts Leffy learns go into the knowledge bank.
-import { triage, CONTACTS } from './triage.js';
+import { triage, CONTACTS, CONTACTS_SELF } from './triage.js';
 import { createLeffy } from './leffy.js';
 import { canRecord, startRecording, transcribeBlob, fmtTime } from './recorder.js';
 import { pickPhoto, shrink } from './photo.js';
@@ -17,7 +17,6 @@ const linkify = s => esc(s).replace(/\b(vved\.org\.au)\b/g, '<a href="https://$1
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const newId = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 const LEVEL = { emergency: 'Emergency', urgent: 'Get seen today', soon: 'This week' };
-const KEY = 'kimon.chat';
 
 const ICON = {
   cam: '<svg viewBox="0 0 24 24"><path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2.2l1.4-2h5.8l1.4 2h2.2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z"/><circle cx="12" cy="13" r="3.6"/></svg>',
@@ -32,18 +31,29 @@ const ICON = {
 let ctx, el, head, chat, recording = null, asking = false;
 const images = new WeakMap(); // photos kept in memory for a retry, never in storage
 
+// Each person on a phone has their own conversation with Leffy.
+const key = () => 'kimon.chat.' + ctx.me().id;
 function load() {
-  try { const c = JSON.parse(localStorage.getItem(KEY) || 'null'); if (c && Array.isArray(c.msgs)) return c; } catch { /* fresh */ }
+  try {
+    const c = JSON.parse(localStorage.getItem(key()) || 'null');
+    if (c && Array.isArray(c.msgs)) return c;
+    // A chat saved before chats were per person belonged to the family.
+    const old = JSON.parse(localStorage.getItem('kimon.chat') || 'null');
+    if (old && Array.isArray(old.msgs) && !ctx.me().kimon) { localStorage.removeItem('kimon.chat'); return old; }
+  } catch { /* fresh */ }
   return { id: newId(), msgs: [] };
 }
 function persist() {
   chat.msgs = chat.msgs.slice(-40);
-  try { localStorage.setItem(KEY, JSON.stringify(chat)); }
-  catch { chat.msgs.forEach(m => { delete m.thumb; }); try { localStorage.setItem(KEY, JSON.stringify(chat)); } catch { /* full */ } }
+  try { localStorage.setItem(key(), JSON.stringify(chat)); }
+  catch { chat.msgs.forEach(m => { delete m.thumb; }); try { localStorage.setItem(key(), JSON.stringify(chat)); } catch { /* full */ } }
 }
 
 const isKimon = () => ctx.role() === 'kimon';
-const dad = () => isKimon() ? 'you' : 'Dad';
+// Leffy has not been told who he is talking to. (A name without how they
+// know Kimon is enough: he then just says "Kimon".)
+const unknown = () => !ctx.me().kimon && !ctx.me().name;
+const contacts = () => (isKimon() ? CONTACTS_SELF : CONTACTS);
 
 export function mountChat(root, context) {
   ctx = context; el = root; chat = load();
@@ -96,7 +106,7 @@ export function refreshChat() {
 let busy = null;
 function knows() {
   const n = ctx.canon() ? bankSize(bank(ctx.canon())) : 0;
-  return n ? `Knows ${n} thing${n === 1 ? '' : 's'} about ${isKimon() ? 'you' : 'Kimon'}` : 'Your heart helper';
+  return n ? `Knows ${n} thing${n === 1 ? '' : 's'} about ${ctx.me().leffy}` : 'Your heart helper';
 }
 function status(t) {
   busy = t || null;
@@ -106,10 +116,10 @@ function status(t) {
 }
 
 function greeting() {
-  const k = isKimon();
-  return k
-    ? "Yia sou Kimon! I'm Leffy. I know your heart record and everything you've logged. Ask me anything, big or small."
-    : "Yia sou! I'm Leffy. I know Kimon's record and everything the family has logged. What's on your mind about his heart?";
+  const me = ctx.me();
+  if (me.kimon) return "Yia sou Kimon! I'm Leffy. I know your heart record and everything you've logged. Ask me anything, big or small.";
+  if (unknown()) return "Yia sou! I'm Leffy, here to help with Kimon's heart. First, who am I talking to?";
+  return `Yia sou ${me.name}! I'm Leffy. I know ${me.leffyPoss} record and everything the family has logged. What's on your mind about his heart?`;
 }
 
 function greet(animate) {
@@ -147,7 +157,7 @@ function leffyBody(m) {
   if (m.failed) return `<div class="bubble failed"><span class="btext">That didn't come through. Your words are kept.</span><button class="pill" data-retry="${esc(m.id)}">Try again</button></div>`;
   const a = m.answer || { reply: m.text };
   const lvl = a.urgency;
-  const c = CONTACTS[lvl];
+  const c = contacts()[lvl];
   const hot = lvl === 'emergency' || lvl === 'urgent';
   return `<div class="bubble ${hot ? 'hot ' + lvl : ''}">
       ${LEVEL[lvl] ? `<span class="utag ${lvl}">${LEVEL[lvl]}</span>` : ''}
@@ -258,14 +268,15 @@ function moreHtml(a, kind) {
 }
 
 /* ---------- suggestions ---------- */
+// Openers in the person's own voice: "Dad's", "Kim's", "my".
 function starters() {
   const canon = ctx.canon() || {};
-  const out = [];
+  const me = ctx.me(), out = [];
   if (!isKimon()) {
     const m = monitor(canon);
     const recent = m.logs[0];
-    if (recent && Date.now() - new Date(recent.ts).getTime() < 3 * 86400000) out.push(`Dad logged: ${recent.summary.replace(/^SYMPTOM:\s*/, '').split(',')[0]}. What should we do?`);
-    out.push('What does his calcium score mean?', 'What should we ask the cardiologist?', 'Is it safe for him to exercise?');
+    if (recent && Date.now() - new Date(recent.ts).getTime() < 3 * 86400000) out.push(`${me.him} logged: ${recent.summary.replace(/^SYMPTOM:\s*/, '').split(',')[0]}. What should we do?`);
+    out.push(`What does ${me.himPoss} calcium score mean?`, 'What should we ask the cardiologist?', `Is it safe for ${me.him} to exercise?`);
   } else {
     out.push('I felt dizzy standing up', 'What does my calcium score mean?', 'Can I still go for my walks?');
   }
@@ -276,6 +287,14 @@ function renderSuggest() {
   const box = $('#suggest', el);
   if (asking || recording) { box.innerHTML = ''; return; }
   const last = [...chat.msgs].reverse().find(m => m.role !== 'note');
+  if (!last && unknown()) {
+    // Leffy asks who he is talking to: one tap for anyone on the family list.
+    const names = ctx.people().filter(p => !p.patient).map(p => p.name);
+    box.innerHTML = names.map(n => `<button type="button" class="spill" data-me="${esc(n)}">I'm ${esc(n)}</button>`).join('')
+      + `<button type="button" class="spill" data-me="">${names.length ? 'Someone else' : 'Tell Leffy who I am'}</button>`;
+    box.querySelectorAll('[data-me]').forEach(b => b.onclick = () => (b.dataset.me ? ctx.choose(b.dataset.me) : ctx.setSomeone()));
+    return;
+  }
   let pills;
   if (!last) pills = starters();
   else if (last.role === 'leffy' && last.answer) pills = (last.answer.replies?.length ? last.answer.replies : ['Tell me more', 'What should we do next?']).slice(0, 3);
@@ -321,7 +340,7 @@ function flag(text, keep) {
   const f = $('#chatFlag', el);
   const { level, reasons } = triage(text);
   if (level === 'routine') { if (!keep) f.hidden = true; return level; }
-  const c = CONTACTS[level];
+  const c = contacts()[level];
   f.className = 'flag ' + level;
   f.innerHTML = `<b>${esc(c.title)}.</b> ${esc(reasons[0] || '')}${level === 'emergency' ? '. ' + linkify(c.lines[isKimon() ? 0 : 1]) : ''}`;
   f.hidden = false;
@@ -404,7 +423,7 @@ async function ask(m, image, level) {
   const thread = chat.msgs.filter(x => x !== m && (x.role === 'user' || (x.role === 'leffy' && x.answer))).slice(-13, -1)
     .map(x => ({ role: x.role, text: x.role === 'user' ? (x.photo ? '[photo] ' : '') + x.text : x.answer.reply }));
   let res = null;
-  const body = { message: m.ask, thread, rid: m.rid, threadId: chat.id, by: ctx.who(), ...(image ? { image: { data: image.data, type: image.type } } : {}) };
+  const body = { message: m.ask, thread, rid: m.rid, threadId: chat.id, by: ctx.who(), calls: ctx.me().calls, ...(image ? { image: { data: image.data, type: image.type } } : {}) };
   const onDelta = d => { m.text += d; const s = $(`.cm[data-id="${m.id}"] .stream`, el); if (s) { s.textContent = m.text; s.parentElement.querySelector('.dots')?.remove(); } else updateMsg(m); head.speak(); status('Typing'); follow(m); };
   const onLearned = ev => {
     if (!ev.facts?.length) return;
@@ -520,7 +539,7 @@ async function photo() {
   try { img = await shrink(file); } catch { ctx.toast("Couldn't open that photo. Try another."); return; }
   const typed = $('#msg', el).value.trim();
   img.typed = Boolean(typed);
-  send(typed || `Here's a photo of ${isKimon() ? 'my' : "Dad's"} test result. What does it show?`, img);
+  send(typed || `Here's a photo of ${isKimon() ? 'my' : ctx.me().himPoss} test result. What does it show?`, img);
 }
 
 async function saveResults(m, n) {
@@ -567,7 +586,7 @@ function bankSheet() {
       const groups = b ? bankItems(b) : [];
       sheet.querySelector('.bank').innerHTML = `
         <div class="bank-top"><div class="bank-lf" aria-hidden="true"></div><div><p class="kicker">What Leffy knows</p>
-        <h3 class="sheet-title">${groups.length ? `${bankSize(b)} things about ${isKimon() ? 'you' : 'Kimon'}` : 'Nothing logged yet'}</h3></div></div>
+        <h3 class="sheet-title">${groups.length ? `${bankSize(b)} things about ${ctx.me().leffy}` : 'Nothing logged yet'}</h3></div></div>
         <p class="soft">Built from every log, check-in, photo and chat since ${b?.since ? esc(fmtDate(b.since, { year: true })) : 'the start'}. It gets sharper with each one.</p>
         <div class="bank-list">${groups.map(g => `<section><p class="kicker">${esc(g.title)}${g.learned ? ' <small>learned in chats</small>' : ''}</p><ul>${g.items.map(i => `<li>${g.learned ? `<span>${esc(i)}</span><button class="forget" data-forget="${esc(i)}" data-topic="${esc(g.topic)}" aria-label="Forget this">Forget</button>` : esc(i)}</li>`).join('')}</ul></section>`).join('')}</div>
         <button class="btn primary" data-done>Done</button>`;

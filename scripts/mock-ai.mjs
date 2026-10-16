@@ -13,7 +13,15 @@ const PHOTO_ROWS = [
   { date: '2026-10-12', test: 'LDL-C', result: '2.1 mmol/L', lab: 'Example Pathology', notes: 'H' },
 ];
 
-function chat(msg, image) {
+// The name the server told Leffy to use for Kimon ("your dad", "Kim", "you").
+function term(text) {
+  if (/Talk to him directly as "you"/.test(text)) return { name: 'you', poss: 'your' };
+  const t = (text.match(/refer to Kimon as "([^"]+)"/i) || [, 'Kimon'])[1];
+  return { name: t, poss: t + "'s" };
+}
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+
+function chat(msg, image, who) {
   const m = msg.toLowerCase();
   if (image) return {
     reply: 'Good news in this one. His LDL (the bad cholesterol) is 2.1, down from 4.0 in August. That is a big drop. The goal for him is under 1.8, so he is close. Shall I save these results to his record?',
@@ -28,7 +36,9 @@ function chat(msg, image) {
     replies: ['He has called 000', "He can't get to a phone", 'The pain has stopped'], learned: [], results: [], limits: '',
   };
   if (/dizz/.test(m)) return {
-    reply: 'Dizziness when he stands up is usually his blood pressure dropping for a moment, not his heart arteries. It is common and easy to check. His GP can measure his blood pressure lying down, then standing. How long does each dizzy spell last?',
+    reply: who.name === 'you'
+      ? 'Dizziness when you stand up is usually your blood pressure dropping for a moment, not your heart arteries. It is common and easy to check. Your GP can measure your blood pressure lying down, then standing. How long does each dizzy spell last?'
+      : 'Dizziness when he stands up is usually his blood pressure dropping for a moment, not his heart arteries. It is common and easy to check. His GP can measure his blood pressure lying down, then standing. How long does each dizzy spell last?',
     urgency: 'soon', doNow: ['Book his GP this week for a lying and standing blood pressure check.', 'Stand up slowly and count to three.'], watchFor: ['Fainting, or dizziness with chest pain: call 000.'], askTheDoctor: ['Could his blood pressure be dropping when he stands?'],
     evidence: [{ point: 'Standing dizziness is often low blood pressure on standing', ref: 'general' }], usedFromRecord: ['No blood pressure reading on file'],
     replies: ['A few seconds', 'Over a minute', 'Not sure'],
@@ -42,7 +52,9 @@ function chat(msg, image) {
   };
   if (/thank/.test(m)) return { reply: 'Anytime. I am here whenever you need me. Siga siga.', urgency: 'routine', doNow: [], watchFor: [], askTheDoctor: [], evidence: [], usedFromRecord: [], replies: ['How is his cholesterol?', 'What should we ask the cardiologist?'], learned: [], results: [], limits: '' };
   return {
-    reply: 'His calcium score of 500 means there is a lot of hard plaque (fatty build-up) in his heart arteries. It does not mean they are blocked. The main job now is bringing his LDL cholesterol down and seeing the cardiologist.',
+    reply: who.name === 'you'
+      ? 'Your calcium score of 500 means there is a lot of hard plaque (fatty build-up) in your heart arteries. It does not mean they are blocked. The main job now is bringing your LDL cholesterol down and seeing the cardiologist.'
+      : `${cap(who.poss)} calcium score of 500 means there is a lot of hard plaque (fatty build-up) in his heart arteries. It does not mean they are blocked. The main job now is bringing his LDL cholesterol down and seeing the cardiologist.`,
     urgency: 'routine', doNow: ['Ask his GP about a strong statin (a cholesterol-lowering pill).'], watchFor: ['Chest pain on walking: get him seen today.'], askTheDoctor: ['What LDL target do you want for him?'],
     evidence: [{ point: 'Calcium score over 400 is severe', ref: '5' }], usedFromRecord: ['Calcium score 500'],
     replies: ['Is he at risk of a heart attack?', 'What tests come next?', 'Can he still exercise?'], learned: [], results: [], limits: 'The score cannot show how narrow the arteries are.',
@@ -50,13 +62,13 @@ function chat(msg, image) {
 }
 
 export async function mockComplete({ system, user, onProgress = () => {}, onText = () => {}, web }) {
-  const { msg, image } = latest(user);
+  const { msg, image, text: prompt } = latest(user);
   let out;
   if (/"kind":/.test(system)) out = { kind: 'lab report', summary: 'A cholesterol blood test from 12 October. His LDL is 2.1, much lower than before.', results: PHOTO_ROWS, unreadable: '' };
   else {
     if (web && /cost|pbs|price/i.test(msg)) { onProgress({ kind: 'search' }); await sleep(300); onProgress({ kind: 'results', n: 5 }); }
     await sleep(400);
-    out = chat(msg, image);
+    out = chat(msg, image, term(prompt));
   }
   const text = JSON.stringify(out);
   onText(null); onProgress({ kind: 'writing' });

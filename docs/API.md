@@ -6,11 +6,12 @@
   `kimon_session` (HttpOnly, Secure, 1 year) with a role. Returns `{role, askWho}`; `askWho` means the phone
   should ask who is using it. `POST /api/login {persona: 'kimon'|'family'}` switches a logged-in phone.
   `DELETE /api/login` logs out.
-- `GET /api/session` returns `{authed, role, sheetConfigured, ai}` or 401.
+- `GET /api/session` returns `{authed, role, sheetConfigured, ai, people}` or 401. `people` is the family
+  list from Vercel env `PEOPLE` (also returned by login).
 - `GET /api/canon` returns the whole sheet canon (shape below); chat notes come without their stored DATA.
 - `POST /api/write {action, payload, by}` proxies one sheet write (actions below). A Kimon session is always
   written as "Kimon".
-- `POST /api/ask {message, thread[{role:'user'|'leffy', text}], threadId, rid, by, image?{data, type}}` streams
+- `POST /api/ask {message, thread[{role:'user'|'leffy', text}], threadId, rid, by, calls?, image?{data, type}}` streams
   NDJSON: `stage` progress, `delta` reply text as it is written, one `answer`, then `learned` when new facts
   were saved. `answer` = `{urgency, reply, doNow[], watchFor[], askTheDoctor[], evidence[{point, ref, title, url}],
   usedFromRecord[], replies[], learned[{topic, fact, replaces}], results[], limits}`.

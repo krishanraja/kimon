@@ -9,9 +9,11 @@ import { corpus, retrieve, refsFor } from '../lib/knowledge.js';
 import { complete } from '../lib/ai.js';
 import { replyStream } from '../lib/reply-stream.js';
 import { RESULTS_RULES, cleanResults, imageBlock, checkImage } from '../lib/photo.js';
-import { triage, maxLevel, LEVELS, CONTACTS } from '../public/js/triage.js';
+import { triage, maxLevel, LEVELS, CONTACTS, CONTACTS_SELF } from '../public/js/triage.js';
 import { bank, bankText, facts, factNote, FACT_TOPICS } from '../public/js/knowledge-bank.js';
 import { melbDay } from '../public/js/kimon-model.js';
+import { person } from '../public/js/people.js';
+import { roster } from '../lib/people.js';
 
 const PII_KEYS = /medicare|address|street|phone|mobile|email|dob|birth|postcode|ihi|dva|insurance number/i;
 
@@ -43,7 +45,7 @@ Your character: a warm, steady Greek-Australian man who talks like a cardiologis
 
 How to reply (this is what makes you useful):
 - This is a chat. Reply like a person in a chat: short, warm, direct. Answer the question first, in plain words. A yes or no question gets "Yes" or "No" first. Never dodge.
-- Talk to the person you are told is chatting. To Kimon say "you". To family say "your dad" or "Kimon".
+- Talk to the person you are told is chatting, by their name now and then. Refer to Kimon exactly the way the "Who is chatting" section says, every time, in the reply, the lists and the suggested replies.
 - Give real advice, the way a cardiologist who is a close family friend would. Say what you would do in their place, and why.
 - Be specific to HIM: use his actual numbers, symptoms, medicines and history from his record and the knowledge bank.
 - Explain what is probably happening in his body and how it links to his heart arteries. Say so plainly if it probably does not.
@@ -53,7 +55,7 @@ How to reply (this is what makes you useful):
 - The one firm limit: he must not start, stop or change a prescription medicine, aspirin or supplement without his doctor.
 - Urgency must be honest. Use "emergency" for a possible heart attack, stroke, collapse, or breathlessness at rest. If symptoms are vague, choose the safer level and say what would change it.
 - Small talk, thanks or a simple follow-up gets a short reply with empty lists. Only fill the lists when they help.
-- Australian context: Medicare, PBS, Victorian services (000, Victorian Virtual ED at vved.org.au, NURSE-ON-CALL 1300 60 60 24, healthdirect 1800 022 222). The daughter is overseas and cannot dial Australian numbers from abroad.
+- Australian context: Medicare, PBS, Victorian services (000, Victorian Virtual ED at vved.org.au, NURSE-ON-CALL 1300 60 60 24, healthdirect 1800 022 222). Kimon is in Melbourne and can dial them. Family members who are overseas cannot dial Australian numbers from abroad.
 
 Sources:
 - Start from the evidence corpus below, his record and the knowledge bank.
@@ -75,7 +77,7 @@ Return ONLY a JSON object, no markdown fences, with exactly these keys, "reply" 
   "askTheDoctor": ["Precise questions for his GP or cardiologist, ready to read aloud."],
   "evidence": [{"point": "A short factual claim behind the reply.", "ref": "corpus reference number, a full URL from your web search, or 'general'"}],
   "usedFromRecord": ["Up to 4 short facts from his record or the knowledge bank you relied on."],
-  "replies": ["2 to 4 things this person is most likely to say next, in their own voice, 2 to 8 words each, genuinely different from each other."],
+  "replies": ["2 to 4 things this person is most likely to say next, in their own voice (using what they call Kimon), 2 to 8 words each, genuinely different from each other."],
   "learned": [{"topic": "${FACT_TOPICS.join('" | "')}", "fact": "Short dated fact.", "replaces": "exact old fact text, or empty"}],
   "results": [{"date": "YYYY-MM-DD or empty", "test": "Test name", "result": "Value with unit", "lab": "", "notes": ""}],
   "limits": "One short sentence on what cannot be known without examining him. Empty for small talk."
@@ -127,21 +129,32 @@ function withSources(answer, webSources = []) {
   return answer;
 }
 
-export function fallbackAnswer(message, level, reasons) {
+export function fallbackAnswer(message, level, reasons, self = false) {
+  const C = self ? CONTACTS_SELF : CONTACTS;
   const hits = level === 'routine' ? retrieve(message, 1) : [];
   const snippet = hits.length
     ? `${hits[0].heading}: ${hits[0].text.replace(/\[\^\d+\]/g, '').replace(/\s+/g, ' ').slice(0, 260).replace(/\s\S*$/, '')}...`
     : '';
   const reply = level === 'routine'
     ? `I can't reach my full brain right now, so this is the closest part of his care guide. No warning signs in what you said. ${snippet}`.trim()
-    : `${CONTACTS[level].title}. ${reasons[0] || ''}. I'm offline right now, so this is from the warning-sign rules only.`;
+    : `${C[level].title}. ${reasons[0] || ''}. I'm offline right now, so this is from the warning-sign rules only.`;
   return {
     urgency: level, reply, headline: reply,
-    doNow: CONTACTS[level].lines, watchFor: [], askTheDoctor: [],
+    doNow: C[level].lines, watchFor: [], askTheDoctor: [],
     evidence: hits.flatMap(h => refsFor(h.text).slice(0, 2)).map(r => ({ point: r.title, ref: r.id, title: r.title, url: r.url })),
     usedFromRecord: [], replies: level === 'emergency' ? ['He has called 000', 'He can\'t get to a phone'] : ['Try again', 'What should we ask his GP?'],
     learned: [], results: [], limits: 'Rule-based reply only; not personalised to his record.',
   };
+}
+
+// Who is chatting, and exactly how to refer to Kimon to them.
+export function speakerContext(me) {
+  if (me.kimon) return 'Kimon himself (the patient; he also goes by Kim). Talk to him directly as "you" and "your" ("your calcium score"). Never call him "your dad" or talk about him in the third person.';
+  const name = me.name || 'A family member';
+  const how = me.known
+    ? `${name} calls him "${me.calls}". When you talk to ${name}, refer to Kimon as "${me.leffy}" (for example "${me.leffyPoss} calcium score"), and write suggested replies the way ${name} would say it ("${me.himPoss} calcium score").`
+    : `Refer to Kimon as "Kimon" (for example "Kimon's calcium score"). Do not call him "your dad": you do not know how ${me.name || 'they'} are related to him.`;
+  return `${name}, a family member. ${how}`;
 }
 
 function transcript(thread = [], who) {
@@ -189,8 +202,9 @@ export default async function handler(req, res) {
     try { canon = await readCanon({ timeoutMs: 9000 }); }
     catch (e) { recordError = e.code === 'NO_SECRET' ? 'Sheet not connected yet' : 'His record could not be loaded'; }
 
-    const who = role === 'kimon' ? 'Kimon' : (by && by !== 'app' ? by : 'Family');
-    const speaker = role === 'kimon' ? 'Kimon himself (the patient). Talk to him directly as "you".' : `${who}, a family member. Kimon is their dad.`;
+    const me = person({ role, who: by === 'app' ? '' : by, calls: body.calls, roster: roster() });
+    const who = me.kimon ? 'Kimon' : me.name || 'Family';
+    const speaker = speakerContext(me);
     const text = `# Who is chatting\n${speaker}\n\n# His live record (from the family's Google Sheet)\n${patientContext(canon)}\n\n# Rule-based triage already shown\nlevel=${rules.level}; reasons=${rules.reasons.join('; ') || 'none'}\n\n# Conversation so far\n${transcript(thread, who)}\n\n# Latest message from ${who}${image ? ' (with a photo attached)' : ''}\n${message}`;
 
     send({ type: 'stage', text: 'Checking the heart guide' });
@@ -212,7 +226,7 @@ export default async function handler(req, res) {
       answer = withSources(clean(extractJson(out.text)), out.sources);
       source = { kind: 'ai', model: out.model, web: out.tools, searched: out.sources.length };
     } catch (e) {
-      answer = fallbackAnswer(message, maxLevel(rules.level, threadRules.level), (threadRules.reasons.length ? threadRules : rules).reasons);
+      answer = fallbackAnswer(message, maxLevel(rules.level, threadRules.level), (threadRules.reasons.length ? threadRules : rules).reasons, me.kimon);
       console.error(JSON.stringify({ askFallback: e.code || 'ERR', message: String(e.message).slice(0, 200) }));
       source = { kind: 'rules', reason: e.code === 'NO_AI' ? 'AI not configured' : 'AI unavailable: ' + e.message.slice(0, 120) };
     }
@@ -224,7 +238,7 @@ export default async function handler(req, res) {
     const known = new Set(facts(canon || {}).map(f => f.text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()));
     const learned = answer.learned.filter(f => !known.has(f.fact.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()));
     answer.learned = learned;
-    const payload = { ok: true, rid, threadId, concern: message, triage: rules, answer, contacts: CONTACTS[answer.urgency], source, recordLoaded: Boolean(canon), recordError };
+    const payload = { ok: true, rid, threadId, concern: message, triage: rules, answer, contacts: (me.kimon ? CONTACTS_SELF : CONTACTS)[answer.urgency], source, recordLoaded: Boolean(canon), recordError };
 
     let saved = false;
     if (canon) {
