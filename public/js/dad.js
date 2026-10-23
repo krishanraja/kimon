@@ -46,11 +46,11 @@ function home(canon) {
     <div class="dad-stats">
       <div class="stat"><b>${m.habitDays}<small>/7</small></b><span>days he did his one thing</span></div>
       ${hasMeds ? `<div class="stat"><b>${m.medsDays}<small>/7</small></b><span>days tablets taken</span></div>` : ''}
-      <div class="stat ${m.checkDue ? 'warm' : ''}"><b>${m.lastCheck ? esc(ago(m.lastCheck.ts)) : 'None'}</b><span>${m.checkDue ? 'body check due' : 'last body check'}</span></div>
+      <div class="stat ${m.checkDue ? 'warm' : ''}"><b>${m.lastCheck ? esc(ago(m.lastCheck.ts)) : 'Not yet'}</b><span>${m.checkDue ? 'body check due' : 'last body check'}</span></div>
     </div>
-    <section class="card dad-feed"><p class="kicker">Lately · last seen ${esc(ago(m.lastSeen))}</p>
+    <section class="card dad-feed${feed.length ? '' : ' empty'}"><p class="kicker">${m.lastSeen ? `Lately · last seen ${esc(ago(m.lastSeen))}` : 'Lately'}</p>
       ${feed.length ? feed.map(f => `<div class="ev"><i class="ev-kind ${f.tone}">${f.kind}</i><span class="ev-body"><b>${esc(ago(f.ts))}</b>${f.chip ? ` <i class="chip ${f.chip[1]}">${f.chip[0]}</i>` : ''}<span>${esc(f.text)}</span></span></div>`).join('')
-        : '<p class="soft">Nothing yet. Once ${esc(him())} starts using his app, his logs show up here.</p>'}
+        : `<h3>Nothing from ${esc(him())} yet</h3><p class="soft">Once he starts using his app, what he logs and says shows up here.</p>`}
     </section>
     <div class="row dad-actions"><button class="btn" data-plan>Care plan</button><button class="btn primary grow" data-nudge>Send a nudge</button></div>
   </div>`;
