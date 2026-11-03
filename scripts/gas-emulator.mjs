@@ -36,6 +36,7 @@ class Range {
   setValue(v) {
     const row = this.sheet.rows[this.r - 1] || (this.sheet.rows[this.r - 1] = []);
     row[this.c - 1] = coerce(v);
+    this.sheet.width = Math.max(this.sheet.width, this.c);
     return this;
   }
 }
@@ -51,10 +52,13 @@ class Sheet {
 export function createSheetApi({ secret = 'mock', seed = null } = {}) {
   const schema = JSON.parse(fs.readFileSync(path.join(root, 'data', 'schema.json'), 'utf8'));
   const tabs = {};
+  const cache = new Map();
   for (const [name, t] of Object.entries(schema.tabs)) tabs[name] = new Sheet(name, t.headers);
 
   const ctx = {
-    SpreadsheetApp: { getActiveSpreadsheet: () => ({ getSheetByName: n => tabs[n] || null }) },
+    SpreadsheetApp: { getActiveSpreadsheet: () => ({ getSheetByName: n => tabs[n] || null, insertSheet: n => (tabs[n] = new Sheet(n, [])) }) },
+    LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
+    CacheService: { getScriptCache: () => ({ get: k => cache.get(k) ?? null, put: (k, v) => { cache.set(k, v); } }) },
     ContentService: {
       MimeType: { JSON: 'application/json' },
       createTextOutput: text => ({ text, setMimeType() { return this; }, getContent() { return this.text; } }),
@@ -77,6 +81,8 @@ export function createSheetApi({ secret = 'mock', seed = null } = {}) {
     tabs,
     get: params => JSON.parse(ctx.doGet({ parameter: params }).getContent()),
     post: body => JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify(body) } }).getContent()),
+    // Forget the fast-path cache, as Apps Script does after six hours.
+    clearCache: () => cache.clear(),
   };
 }
 
@@ -87,7 +93,7 @@ function seedTabs(tabs, c) {
   put('Profile', Object.entries(c.profile || {}).map(([k, v]) => [k, v, 'seed', '', 'yes']));
   put('Conditions', (c.conditions || []).map(x => [x.name, x.status, x.since, x.notes, x.source, x.updated]));
   put('Medications', (c.medications || []).map(x => [x.name, x.dose, x.frequency, x.started, x.status, x.source, x.updated]));
-  put('TestResults', (c.testResults || []).map(x => [x.date, x.test, x.result, x.lab, x.notes, x.source]));
+  put('TestResults', (c.testResults || []).map(x => [x.date, x.test, x.result, x.lab, x.notes, x.source, x.measuredAt, x.id, x.supersedes]));
   put('CheckIns', (c.checkins || []).map(x => [x.tsUTC, x.tsMelb, x.by, x.chest, x.breath, x.walking, x.energy, x.tablets, x.mood, x.verdict, x.notes]));
   put('Questions', (c.questions || []).map(x => [x.id, x.question, x.askWhom, x.priority, x.status, x.answer, x.updated]));
   put('KnowledgeGaps', (c.gaps || []).map(x => [x.id, x.gap, x.whatAnswersIt, x.stepToClose, x.status, x.updated]));

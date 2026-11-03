@@ -3,6 +3,7 @@
 import { monitor, readPlan, HABIT_IDEAS, TAGS, melbDay } from './kimon-model.js';
 import { fmtDate } from './metrics.js';
 import { openSheet } from './record.js';
+import { currentMeds, medLine } from './meds-model.js';
 
 let ctx, root, view = 'home';
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -31,7 +32,7 @@ function ago(ts) {
 function home(canon) {
   const m = monitor(canon);
   const plan = readPlan(canon.profile);
-  const hasMeds = plan.meds.some(x => x.name);
+  const hasMeds = !currentMeds(canon).empty;
   // Latest few things, newest first: symptoms, what he said, the body check.
   const feed = [
     ...m.logs.map(l => ({ ts: l.ts, kind: 'Symptom', tone: (LEVEL[l.level] || LEVEL.soon)[1], text: l.summary.replace(/^SYMPTOM:\s*/, ''), chip: LEVEL[l.level] })),
@@ -90,20 +91,32 @@ function nudgeSheet(canon) {
 function planView(canon) {
   const plan = readPlan(canon.profile);
   const draw = () => {
+    const meds = currentMeds(canon);
     root.innerHTML = `<header class="spoke-head"><button class="back" data-back aria-label="Back"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg><span>Monitor</span></button><h2>Care plan</h2></header>
     <article class="card"><div class="fit plan">
       <p class="kicker">Habits · he sees one a day</p>
       <div class="plan-list">${plan.habits.map((h, i) => `<div class="plan-row"><button class="toggle ${h.on !== false ? 'on' : ''}" data-tog="${i}" aria-pressed="${h.on !== false}" aria-label="Turn ${esc(h.text)} ${h.on !== false ? 'off' : 'on'}"><i></i></button><span>${esc(h.text)}</span><button class="x" data-rm="${i}" aria-label="Remove">×</button></div>`).join('') || '<p class="soft">No habits yet.</p>'}</div>
       <button class="pill" data-addh>+ Add a habit</button>
-      <p class="kicker">Tablets · he ticks them daily</p>
-      <div class="plan-list">${plan.meds.map((m, i) => `<div class="plan-row"><span><b>${esc(m.name)}</b>${m.when ? ` · ${esc(m.when)}` : ''}</span><button class="x" data-rmm="${i}" aria-label="Remove">×</button></div>`).join('') || '<p class="soft">None yet. Add one once his doctor prescribes it.</p>'}</div>
-      <button class="pill" data-addm>+ Add a tablet</button>
+      <p class="kicker">Medicines · the same list ${esc(him())} sees and corrects</p>
+      <div class="plan-list">${meds.current.map(m => `<div class="plan-row"><span><b>${esc(medLine(m))}</b></span><button class="x" data-stop="${esc(m.name)}" aria-label="Mark ${esc(m.name)} as stopped">×</button></div>`).join('')}${meds.unconfirmed.map(m => `<div class="plan-row"><span><b>${esc(medLine(m))}</b> · not confirmed</span></div>`).join('') || (meds.current.length ? '' : '<p class="soft">None recorded yet. Add one once his doctor prescribes it.</p>')}</div>
+      <button class="pill" data-addm>+ Add a medicine</button>
     </div></article>
     <button class="btn primary" data-save>Save care plan</button>`;
     root.querySelector('[data-back]').onclick = () => { view = 'home'; render(); };
     root.querySelectorAll('[data-tog]').forEach(b => b.onclick = () => { const h = plan.habits[+b.dataset.tog]; h.on = h.on === false; draw(); });
     root.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { plan.habits.splice(+b.dataset.rm, 1); draw(); });
-    root.querySelectorAll('[data-rmm]').forEach(b => b.onclick = () => { plan.meds.splice(+b.dataset.rmm, 1); draw(); });
+    // Medicines save straight to the shared list (with a change log), not the care plan.
+    const saveMed = async (p, done) => {
+      const row = (canon.medications || (canon.medications = [])).find(m => m.name === p.name);
+      if (row) Object.assign(row, { dose: p.dose ?? row.dose, frequency: p.frequency ?? row.frequency, status: p.status ?? row.status });
+      else canon.medications.push({ name: p.name, dose: p.dose || '', frequency: p.frequency || '', status: p.status || 'current' });
+      draw();
+      const r = await ctx.save('medication', p);
+      ctx.toast(r.ok ? done : 'Kept on this phone. It will save when you are online.');
+    };
+    root.querySelectorAll('[data-stop]').forEach(b => b.onclick = () => {
+      if (confirm(`Mark ${b.dataset.stop} as stopped? It stays in his history.`)) saveMed({ name: b.dataset.stop, status: 'stopped' }, 'Marked as stopped');
+    });
     root.querySelector('[data-addh]').onclick = () => openSheet(`<p class="kicker">Add a habit</p>
       <div class="nudge-picks">${HABIT_IDEAS.filter(x => !plan.habits.some(h => h.text === x)).map(x => `<button class="pill" data-h="${esc(x)}">${esc(x)}</button>`).join('')}</div>
       <input id="habitText" maxlength="60" placeholder="Or write your own, short and specific">
@@ -113,12 +126,12 @@ function planView(canon) {
       sheet.querySelector('[data-ok]').onclick = () => { const t = inp.value.trim(); if (t) { plan.habits.push({ text: t, on: true }); close(); draw(); } };
     });
     root.querySelector('[data-addm]').onclick = () => openSheet(`<p class="kicker">Add a tablet</p>
-      <input id="medName" maxlength="40" placeholder="Name, e.g. Atorvastatin 40 mg">
+      <input id="medName" maxlength="60" placeholder="Name and dose, as on the box">
       <div class="nudge-picks">${['morning', 'evening', 'with dinner'].map(w => `<button class="pill" data-w="${w}">${w}</button>`).join('')}</div>
       <button class="btn primary" data-ok>Add</button>`, (sheet, close) => {
       let when = '';
       sheet.querySelectorAll('[data-w]').forEach(b => b.onclick = () => { when = b.dataset.w; sheet.querySelectorAll('[data-w]').forEach(x => x.classList.toggle('on', x === b)); });
-      sheet.querySelector('[data-ok]').onclick = () => { const n = sheet.querySelector('#medName').value.trim(); if (n) { plan.meds.push({ name: n, when }); close(); draw(); } };
+      sheet.querySelector('[data-ok]').onclick = () => { const n = sheet.querySelector('#medName').value.trim(); if (n) { close(); saveMed({ name: n, frequency: when, status: 'current' }, 'Added to his medicines'); } };
     });
     root.querySelector('[data-save]').onclick = async () => {
       const value = JSON.stringify(plan);

@@ -117,10 +117,23 @@
         "Result",
         "Lab",
         "Notes",
-        "Source"
+        "Source",
+        "MeasuredAt",
+        "Id",
+        "Supersedes"
       ],
       "mode": "append",
       "seed_rows": 5
+    },
+    "Ops": {
+      "headers": [
+        "OpId",
+        "TsUTC",
+        "Action",
+        "By"
+      ],
+      "mode": "append",
+      "seed_rows": 0
     }
   }
 }

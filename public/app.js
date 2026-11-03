@@ -1,4 +1,6 @@
 import { CONTACTS } from '/js/triage.js';
+import { newOpId } from '/js/outbox.js';
+import { currentMeds, medLine } from '/js/meds-model.js';
 import { mountRecord, refreshRecord, recordHome, openSheet } from '/js/record.js';
 import { extract, resultCards, situation, fmtDate, STAGES } from '/js/metrics.js';
 import { plainTask } from '/js/record-model.js';
@@ -64,12 +66,14 @@ async function loadCanon() {
 }
 
 async function save(action, payload) {
+  // One opId per action, repeated on retry, so the sheet never writes it twice.
+  const opId = newOpId();
   try {
-    const out = await api('/api/write', { method: 'POST', body: { action, payload, by: who() } });
+    const out = await api('/api/write', { method: 'POST', body: { action, payload, by: who(), opId } });
     return { ok: true, out };
   } catch (e) {
     if (e.status === 401) return { ok: false };
-    const q = store.get('queue', []); q.push({ action, payload, by: who(), ts: Date.now() }); store.set('queue', q);
+    const q = store.get('queue', []); q.push({ action, payload, by: who(), opId, ts: Date.now() }); store.set('queue', q);
     setSync('warn', `${q.length} waiting to save`);
     return { ok: false, queued: true };
   }
@@ -425,7 +429,11 @@ function briefText() {
       L.push(line);
     }
   }
-  L.push('', 'MEDICATIONS'); (c.medications || []).length ? c.medications.forEach(x => L.push(`- ${x.name} ${x.dose} ${x.frequency} (${x.status})`)) : L.push('- none recorded');
+  const meds = currentMeds(c);
+  L.push('', 'MEDICATIONS');
+  meds.current.length ? meds.current.forEach(x => L.push(`- ${medLine(x)}`)) : L.push('- none confirmed');
+  meds.unconfirmed.forEach(x => L.push(`- ${medLine(x)} (not confirmed yet)`));
+  meds.stopped.forEach(x => L.push(`- ${medLine(x)} (stopped)`));
   const notes = (c.notes || []).filter(n => n.by !== 'claude-test');
   const sym = notes.filter(n => /symptom|found-out/i.test(n.tag)).slice(-6);
   if (sym.length) { L.push('', 'WHAT HE HAS TOLD US'); sym.forEach(n => L.push(`- ${fmtDate(n.tsUTC)}: ${String(n.text).replace(/^FOUND OUT[^:]*:\s*/i, '')}`)); }
