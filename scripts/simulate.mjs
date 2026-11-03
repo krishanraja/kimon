@@ -13,7 +13,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
-import { TAGS, noteText, symptomLevel, checkLevel, monitor, BODY_CHECK, noteData } from '../public/js/kimon-model.js';
+import { TAGS, noteText, symptomLevel, checkLevel, monitor, BODY_CHECK, noteData, weeklyKimonEntries } from '../public/js/kimon-model.js';
+import { bpSeries } from '../public/js/metrics.js';
+import { medsContext } from '../public/js/meds-model.js';
 import { bank, bankText, bankSize, factNote } from '../public/js/knowledge-bank.js';
 import { historyEvents } from '../public/js/record-model.js';
 import { patientContext } from '../api/ask.js';
@@ -256,6 +258,46 @@ check('History: photo results, symptoms, what he said, found out all appear', ()
 });
 const grew = { before: bankSize(bankBefore), after: bankSize(b), ctxBefore: bankText(bankBefore).length, ctxAfter: bankText(b).length };
 check('Bank grew from this session', () => assert.ok(grew.after > grew.before));
+
+// ---- Typed-in BP, once-only writes, one medicines list, Leffy's context ----
+const opW = (action, payload, opId) => kim.call('/api/write', { action, payload, opId });
+const bpP = { id: 'sim-r1', sys: '128', dia: '82', measuredAt: new Date().toISOString() };
+const bp1 = await opW('reading', bpP, 'sim-op-1');
+const bp2 = await opW('reading', bpP, 'sim-op-1'); // retry after an unclear timeout
+const bp3 = await opW('reading', bpP, 'sim-op-1');
+const fix = await opW('reading', { id: 'sim-r2', sys: '126', dia: '82', measuredAt: bpP.measuredAt, supersedes: 'sim-r1' }, 'sim-op-2');
+const staleFact = factNote({ fact: 'Kimon says he is not on any cholesterol tablet', topic: 'medicine' });
+await fam.call('/api/write', { action: 'note', payload: staleFact, by: 'Sam', opId: 'sim-op-3' });
+await new Promise(r => setTimeout(r, 1100));
+const med1 = await opW('medication', { name: 'Medicine A (synthetic)', dose: '10 mg', frequency: 'night', status: 'current' }, 'sim-op-4');
+const med2 = await opW('medication', { name: 'Medicine A (synthetic)', dose: '20 mg' }, 'sim-op-5');
+const c2 = await kim.call('/api/canon');
+check('BP: a reading sent three times with one opId is saved once, attributed to Kimon', () => {
+  assert.equal(bp1.ok && bp2.ok && bp3.ok, true);
+  assert.equal(bp2.duplicate, true);
+  const rows = c2.testResults.filter(r => r.id === 'sim-r1');
+  assert.equal(rows.length, 1); assert.equal(rows[0].source, 'Kimon'); assert.equal(rows[0].measuredAt, bpP.measuredAt);
+});
+check('BP: a correction replaces the reading in every view and keeps the original row', () => {
+  assert.equal(fix.ok, true);
+  assert.ok(c2.testResults.some(r => r.id === 'sim-r1'));
+  const live = bpSeries(c2.testResults).readings.filter(r => r.id.startsWith('sim-'));
+  assert.deepEqual(live.map(r => [r.sys, r.corrected]), [[126, true]]);
+});
+check('Medicines: a correction persists with Kimon as author and reaches Leffy first', () => {
+  assert.equal(med1.ok && med2.ok, true);
+  const ctx = patientContext(c2);
+  assert.match(ctx, /Medicine A \(synthetic\) 20 mg, night/);
+  assert.ok(ctx.indexOf('Medicine A (synthetic) 20 mg') < ctx.indexOf('not on any cholesterol tablet'));
+  assert.ok(c2.changelog.some(x => x.tab === 'Medications' && x.by === 'Kimon' && x.new === '20 mg'));
+});
+check('Medicines: an older chat fact is labelled out of date, not trusted', () => {
+  assert.match(medsContext(c2), /not on any cholesterol tablet \[older than the latest list change/);
+});
+check('North Star: this week counts Kimon\'s own entries and active days', () => {
+  const w = weeklyKimonEntries(c2, new Date(Date.now() - 6 * 86400000));
+  assert.ok(w.count > 0 && w.activeDays >= 1);
+});
 
 server.kill();
 const pass = results.filter(r => r[0] === 'PASS').length;

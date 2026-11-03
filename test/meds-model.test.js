@@ -89,3 +89,11 @@ test('confirming the list is right clears the check until the list changes', () 
   s.tabs.Notes.appendRow([new Date(Date.now() + 86400000).toISOString(), 'Kimon', 'MEDS: list is right', 'meds-confirmed']);
   assert.equal(needsCheck(read(s)), false);
 });
+
+test('a fact learned earlier the same day as a correction is still out of date', () => {
+  const s = api();
+  const f = factNote({ fact: 'Not on a statin', topic: 'medicine' });
+  s.tabs.Notes.appendRow([new Date(Date.now() - 60000).toISOString(), 'Sam', f.text, f.tag]);
+  post(s, 'medication', { name: 'Medicine A (synthetic)', status: 'current' }, 'op-1');
+  assert.equal(currentMeds(read(s)).chat[0].stale, true);
+});

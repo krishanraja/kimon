@@ -44,8 +44,11 @@ export function currentMeds(canon = {}) {
   // A fact is "stale" when the list was updated after it was learned, and
   // "conflict" when it names a medicine the list does not have as current.
   const currentStems = new Set(listed.filter(m => m.status === 'current').map(m => stem(m.name)));
+  // Exact time of the latest list change where the change log has it, so a
+  // fact learned earlier the same day still counts as older.
+  const lastChangeTs = (canon.changelog || []).filter(c => c.tab === 'Medications').map(c => String(c.ts)).sort().pop() || '';
   const chat = facts(canon).filter(f => f.topic === 'medicine').map(f => {
-    const stale = !!lastUpdate && dayOf(f.ts) < lastUpdate;
+    const stale = lastChangeTs ? String(f.ts) < lastChangeTs : !!lastUpdate && dayOf(f.ts) < lastUpdate;
     const mentionsCurrent = [...currentStems].some(s => s && norm(f.text).includes(s));
     return { text: f.text, ts: f.ts, by: f.by, stale, unconfirmed: true, mentionsCurrent };
   });

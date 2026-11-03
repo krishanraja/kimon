@@ -30,6 +30,8 @@ Lifecycle: live. The detail is in `README.md`.
 
 ## What changed recently
 
+- 2026-11-03 **Kimon's app rebuilt around one repeat action: typed-in blood pressure, one medicines list, once-only saving.** Built on a branch and waiting for Krish's design approval; not deployed. See `now-notes/2026-11-03-beside-patient-app.md`.
+
 - 2026-10-23 **The North Star now has a number, a weekly ladder and an urgency rating.** Ruling (Krish, 2026-10-23): every repository chases one aggressive number on a weekly ladder, and urgency U1 to U5 sets how hard it pushes. The number is in `docs/NORTH_STAR.md`; contract: ai-harness `contract/north-star-metric.md`.
 
 ## What is next and what is waiting on Krish
