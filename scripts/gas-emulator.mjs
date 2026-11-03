@@ -49,7 +49,7 @@ class Sheet {
   appendRow(values) { this.rows.push(values.map(coerce)); this.width = Math.max(this.width, values.length); return this; }
 }
 
-export function createSheetApi({ secret = 'mock', seed = null } = {}) {
+export function createSheetApi({ secret = 'mock', seed = null, props = {} } = {}) {
   const schema = JSON.parse(fs.readFileSync(path.join(root, 'data', 'schema.json'), 'utf8'));
   const tabs = {};
   const cache = new Map();
@@ -57,6 +57,7 @@ export function createSheetApi({ secret = 'mock', seed = null } = {}) {
 
   const ctx = {
     SpreadsheetApp: { getActiveSpreadsheet: () => ({ getSheetByName: n => tabs[n] || null, insertSheet: n => (tabs[n] = new Sheet(n, [])) }) },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: k => props[k] ?? null }) },
     LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
     CacheService: { getScriptCache: () => ({ get: k => cache.get(k) ?? null, put: (k, v) => { cache.set(k, v); } }) },
     ContentService: {

@@ -778,6 +778,28 @@ function wireMic(btn, ta) {
 let toastT;
 function toast(m, ms = 3200) { const t = $('#toast'); t.textContent = m; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, ms); }
 
+/* ---------- keyboard ---------- */
+// The phone keyboard must never cover the action. Size the app to the part of
+// the screen the keyboard leaves free (iOS does not resize the page itself).
+if (window.visualViewport) {
+  const vv = window.visualViewport, rootEl = document.documentElement;
+  // Android resizes the page with the keyboard, iOS does not: compare with the
+  // tallest the screen has been in this orientation, not just innerHeight.
+  let tall = innerHeight, wide = innerWidth;
+  const onVV = () => {
+    if (innerWidth !== wide) { wide = innerWidth; tall = vv.height; }
+    tall = Math.max(tall, innerHeight, vv.height);
+    rootEl.style.setProperty('--app-h', vv.height + 'px');
+    document.body.classList.toggle('kb', tall - vv.height > 140);
+    // iOS leaves the page tall and lays the keyboard over it: lift the action by that much.
+    rootEl.style.setProperty('--kb-gap', Math.max(0, innerHeight - vv.height - vv.offsetTop) + 'px');
+    if (vv.offsetTop) window.scrollTo(0, 0);
+    const f = document.activeElement;
+    if (f && /INPUT|TEXTAREA/.test(f.tagName)) requestAnimationFrame(() => f.scrollIntoView({ block: 'nearest' }));
+  };
+  vv.addEventListener('resize', onVV); vv.addEventListener('scroll', onVV); onVV();
+}
+
 /* ---------- boot ---------- */
 (async () => {
   try {

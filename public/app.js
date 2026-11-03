@@ -304,10 +304,21 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 // Keep the chat composer above the keyboard: iOS does not resize the page.
 if (window.visualViewport) {
   const vv = window.visualViewport, rootEl = document.documentElement;
+  // Android resizes the page with the keyboard, iOS does not: compare with the
+  // tallest the screen has been in this orientation, not just innerHeight.
+  let tall = innerHeight, wide = innerWidth;
   const onVV = () => {
+    if (innerWidth !== wide) { wide = innerWidth; tall = vv.height; }
+    tall = Math.max(tall, innerHeight, vv.height);
     rootEl.style.setProperty('--app-h', vv.height + 'px');
-    document.body.classList.toggle('kb', innerHeight - vv.height > 140);
+    document.body.classList.toggle('kb', tall - vv.height > 140);
     if (vv.offsetTop) window.scrollTo(0, 0);
+    // Whatever field is in use, keep it and the button after it in view.
+    const f = document.activeElement;
+    if (f && /INPUT|TEXTAREA/.test(f.tagName)) {
+      const next = f.form?.querySelector('[type="submit"]') || f;
+      requestAnimationFrame(() => next.scrollIntoView({ block: 'nearest' }));
+    }
   };
   vv.addEventListener('resize', onVV); vv.addEventListener('scroll', onVV); onVV();
 }
