@@ -588,7 +588,7 @@ function bankSheet() {
         <div class="bank-top"><div class="bank-lf" aria-hidden="true"></div><div><p class="kicker">What Leffy knows</p>
         <h3 class="sheet-title">${groups.length ? `${bankSize(b)} things about ${ctx.me().leffy}` : 'Nothing logged yet'}</h3></div></div>
         <p class="soft">Built from every log, check-in, photo and chat since ${b?.since ? esc(fmtDate(b.since, { year: true })) : 'the start'}. It gets sharper with each one.</p>
-        <div class="bank-list">${groups.map(g => `<section><p class="kicker">${esc(g.title)}${g.learned ? ' <small>learned in chats</small>' : ''}</p><ul>${g.items.map(i => `<li>${g.learned ? `<span>${esc(i)}</span><button class="forget" data-forget="${esc(i)}" data-topic="${esc(g.topic)}" aria-label="Forget this">Forget</button>` : esc(i)}</li>`).join('')}</ul></section>`).join('')}</div>
+        <div class="bank-list">${groups.map(g => `<section><p class="kicker">${esc(g.title)}${g.learned ? ' <small>learned in chats</small>' : ''}</p>${g.topic === 'medicine' ? '<p class="soft">Not confirmed. The medicines list is the truth; correct it in My medicines.</p>' : ''}<ul>${g.items.map(i => `<li>${g.learned ? `<span>${esc(i)}</span><button class="forget" data-forget="${esc(i)}" data-topic="${esc(g.topic)}" aria-label="Forget this">Forget</button>` : esc(i)}</li>`).join('')}</ul></section>`).join('')}</div>
         <button class="btn primary" data-done>Done</button>`;
       createLeffy(sheet.querySelector('.bank-lf'));
       sheet.querySelector('[data-done]').onclick = close;

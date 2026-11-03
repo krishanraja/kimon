@@ -119,3 +119,21 @@ export function pendingNudge(canon) {
   const n = notes.filter(x => x.tag === TAGS.nudge && x.tsUTC > lastSeen).pop();
   return n ? { ts: n.tsUTC, from: n.by, text: noteSummary(n).replace(/^NUDGE:\s*/i, '') } : null;
 }
+
+// The North Star number: things Kimon added himself in one week, counted from
+// rows the server attributed to him. Test rows and repeat sends are already
+// excluded (the server refuses a repeated opId). Also returns how many
+// different days he was active, so a burst on one day is visible as such.
+export function weeklyKimonEntries(canon = {}, weekStart = new Date(Date.now() - 7 * 86400000)) {
+  const from = new Date(weekStart).getTime(), to = from + 7 * 86400000;
+  const inWeek = ts => { const t = new Date(ts).getTime(); return t >= from && t < to; };
+  const items = [];
+  for (const n of canon.notes || []) if (n.by === 'Kimon' && inWeek(n.tsUTC)) items.push({ kind: 'note:' + n.tag, ts: n.tsUTC });
+  for (const c of canon.checkins || []) if (c.by === 'Kimon' && inWeek(c.tsUTC)) items.push({ kind: 'checkin', ts: c.tsUTC });
+  for (const r of canon.testResults || []) {
+    const ts = r.measuredAt || r.date;
+    if (r.source === 'Kimon' && inWeek(ts)) items.push({ kind: r.result === 'retracted' ? 'reading-retracted' : 'result', ts });
+  }
+  for (const c of canon.changelog || []) if (c.by === 'Kimon' && c.tab === 'Medications' && inWeek(c.ts)) items.push({ kind: 'medicine', ts: c.ts });
+  return { count: items.length, activeDays: new Set(items.map(i => melbDay(i.ts))).size, byKind: items.reduce((o, i) => ((o[i.kind] = (o[i.kind] || 0) + 1), o), {}) };
+}

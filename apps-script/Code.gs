@@ -12,7 +12,13 @@ var APP_SECRET = '__APP_SECRET__'; // replaced at deploy time
 var TZ = 'Australia/Melbourne';
 
 var OVERWRITE_TABS = ['Profile', 'Conditions', 'Medications', 'Questions', 'KnowledgeGaps'];
-var APPEND_TABS = ['TestResults', 'CheckIns', 'Notes', 'Changelog'];
+var APPEND_TABS = ['TestResults', 'CheckIns', 'Notes', 'Changelog', 'Ops'];
+
+// Columns added after launch. Existing rows read '' for them; ensureCols()
+// writes the header cells the first time a new column is used.
+var TEST_COLS = ['Date', 'Test', 'Result', 'Lab', 'Notes', 'Source', 'MeasuredAt', 'Id', 'Supersedes'];
+var OPS_COLS = ['OpId', 'TsUTC', 'Action', 'By'];
+var MED_STATUSES = ['current', 'stopped', 'unconfirmed', 'removed', 'superseded'];
 
 /* ---------- plumbing ---------- */
 
@@ -27,6 +33,16 @@ function nowMelb() { return Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd HH:
 function sh(name) {
   var s = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name);
   if (!s) throw new Error('missing tab: ' + name);
+  return s;
+}
+
+// Create a tab or fill in missing header cells. Never moves or clears data.
+function ensureCols(name, headers) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var s = ss.getSheetByName(name) || ss.insertSheet(name);
+  for (var i = 0; i < headers.length; i++) {
+    if (String(s.getRange(1, i + 1).getValue()) === '') s.getRange(1, i + 1).setValue(headers[i]);
+  }
   return s;
 }
 
@@ -85,7 +101,7 @@ function readCanon() {
     profile: kv('Profile'),
     conditions: arr('Conditions', ['name','status','since','notes','source','updated']),
     medications: arr('Medications', ['name','dose','frequency','started','status','source','updated']),
-    testResults: arr('TestResults', ['date','test','result','lab','notes','source']),
+    testResults: arr('TestResults', ['date','test','result','lab','notes','source','measuredAt','id','supersedes']),
     checkins: arr('CheckIns', ['tsUTC','tsMelb','by','chest','breath','walking','energy','tablets','mood','verdict','notes']),
     questions: arr('Questions', ['id','question','askWhom','priority','status','answer','updated']),
     gaps: arr('KnowledgeGaps', ['id','gap','whatAnswersIt','stepToClose','status','updated']),
@@ -256,12 +272,43 @@ var ACTIONS = {
     return json({ ok: true });
   },
 
+  // One blood pressure reading typed in by hand. Corrections and "not a real
+  // reading" append a new row that names the row it replaces, so the history
+  // keeps both.
+  reading: function (p, by) {
+    var bad = need(p, ['id', 'measuredAt']);
+    if (bad) return err(bad);
+    var at = new Date(p.measuredAt);
+    if (isNaN(at.getTime())) return err('bad measuredAt');
+    var retract = p.retract === true;
+    var sys = parseInt(p.sys, 10), dia = parseInt(p.dia, 10);
+    if (!retract && (String(sys) !== String(p.sys).trim() || String(dia) !== String(p.dia).trim() || sys < 1 || dia < 1 || sys > 400 || dia > 400)) {
+      return err('bad numbers');
+    }
+    var s = ensureCols('TestResults', TEST_COLS);
+    var day = Utilities.formatDate(at, TZ, 'yyyy-MM-dd');
+    var note = retract ? 'Not a real reading' : p.supersedes ? 'Corrected' : 'Typed in on the phone';
+    s.appendRow([day, 'Blood pressure', retract ? 'retracted' : sys + '/' + dia + ' mmHg', '', note, by, at.toISOString(), String(p.id), String(p.supersedes || '')]);
+    return json({ ok: true, id: String(p.id) });
+  },
+
   medication: function (p, by) {
     var bad = need(p, ['name']);
     if (bad) return err(bad);
+    if (p.status !== undefined && !inEnum(p.status, MED_STATUSES)) return err('bad status');
     var s = sh('Medications');
-    var r = findRow('Medications', 0, p.name);
     var today = nowUTC().slice(0,10);
+    // A rename: the old name is kept as "superseded" so its history stays.
+    if (p.previousName && String(p.previousName).trim() !== String(p.name).trim()) {
+      var old = findRow('Medications', 0, p.previousName);
+      if (old > 0) {
+        var was = s.getRange(old, 5).getValue();
+        s.getRange(old, 5).setValue('superseded');
+        s.getRange(old, 7).setValue(today);
+        logChange('Medications', p.previousName + '.status', was, 'superseded (now ' + p.name + ')', by, 'app');
+      }
+    }
+    var r = findRow('Medications', 0, p.name);
     if (r < 0) {
       s.appendRow([p.name, p.dose || '', p.frequency || '', p.started || '', p.status || 'current', 'app', today]);
       logChange('Medications', p.name, '(none)', p.status || 'current', by, 'app');
@@ -270,6 +317,7 @@ var ACTIONS = {
       for (var f in fields) {
         if (p[f] !== undefined) {
           var oldV = s.getRange(r, fields[f]).getValue();
+          if (String(oldV) === String(p[f])) continue;
           s.getRange(r, fields[f]).setValue(p[f]);
           logChange('Medications', p.name + '.' + f, oldV, p[f], by, 'app');
         }
@@ -279,6 +327,24 @@ var ACTIONS = {
     return json({ ok: true });
   }
 };
+
+/* ---------- once-only writes ---------- */
+
+// The phone sends a stable opId with every write and repeats it on retry.
+// A repeat returns the first answer's "ok" without writing twice.
+function seenOp(opId) {
+  var cache = CacheService.getScriptCache();
+  if (cache.get('op:' + opId)) return true;
+  var rows = getRows('Ops');
+  for (var i = rows.length - 1; i >= 0 && i >= rows.length - 5000; i--) {
+    if (String(rows[i][0]) === opId) return true;
+  }
+  return false;
+}
+function rememberOp(opId, action, by) {
+  ensureCols('Ops', OPS_COLS).appendRow([opId, nowUTC(), action, by || 'app']);
+  CacheService.getScriptCache().put('op:' + opId, '1', 21600);
+}
 
 /* ---------- entry points ---------- */
 
@@ -300,7 +366,21 @@ function doPost(e) {
     if (body.secret !== APP_SECRET) return err('bad secret');
     var fn = ACTIONS[body.action];
     if (!fn) return err('unknown action: ' + body.action);
-    return fn(body.payload || {}, body.by || 'app');
+    var opId = String(body.opId || '').slice(0, 80);
+    if (!opId) return fn(body.payload || {}, body.by || 'app');
+    var lock = LockService.getScriptLock();
+    lock.waitLock(20000);
+    try {
+      ensureCols('Ops', OPS_COLS);
+      if (seenOp(opId)) return json({ ok: true, duplicate: true });
+      var out = fn(body.payload || {}, body.by || 'app');
+      var res = {};
+      try { res = JSON.parse(out.getContent()); } catch (x) {}
+      if (res.ok) rememberOp(opId, body.action, body.by);
+      return out;
+    } finally {
+      lock.releaseLock();
+    }
   } catch (ex) {
     return err('server error: ' + ex.message);
   }

@@ -8,7 +8,7 @@
 //            "fact" (one row per fact, newest wins).
 // Pure functions, no DOM; runs in the browser, on the server and in tests.
 import { TAGS, SYMPTOMS, BODY_CHECK, noteData, noteSummary, melbDay } from './kimon-model.js';
-import { extract, MEASURES, dateKey, fmtDate } from './metrics.js';
+import { extract, MEASURES, dateKey, fmtDate, liveResults, bpSeries } from './metrics.js';
 
 export const FACT_TAG = 'fact';
 export const FACT_TOPICS = ['symptom', 'history', 'medicine', 'lifestyle', 'care', 'family', 'other'];
@@ -53,7 +53,7 @@ export function facts(canon) {
 // Every value of every measure over time, oldest first: {ldl: [{date, value}]}.
 export function series(testResults = []) {
   const byDate = new Map();
-  for (const r of testResults) {
+  for (const r of liveResults(testResults)) {
     const k = dateKey(r.date); if (!k) continue;
     (byDate.get(k) || byDate.set(k, []).get(k)).push(r);
   }
@@ -118,7 +118,7 @@ export function adherence(canon, now = new Date()) {
 export function bank(canon = {}, now = new Date()) {
   const notes = realNotes(canon);
   const s = series(canon.testResults);
-  const results = Object.entries(s).filter(([k]) => MEASURES[k]).map(([key, vals]) => {
+  const results = Object.entries(s).filter(([k]) => MEASURES[k] && k !== 'bp').map(([key, vals]) => {
     const last = vals[vals.length - 1];
     return { key, label: MEASURES[key].label, unit: MEASURES[key].unit || '', values: vals, last, trend: trendWord(vals) };
   });
@@ -129,8 +129,14 @@ export function bank(canon = {}, now = new Date()) {
   const concerns = notes.filter(n => n.tag === 'concern').map(n => ({ ts: n.tsUTC, text: (String(n.text).match(/^CONCERN:\s*([\s\S]*?)(?:\nURGENCY:|$)/) || [, ''])[1].trim() })).filter(c => c.text);
   const photos = (canon.testResults || []).filter(r => /photo/i.test(r.notes || '')).length;
   const first = [...notes.map(n => n.tsUTC), ...(canon.checkins || []).map(c => c.tsUTC)].filter(Boolean).sort()[0] || '';
+  const bpAll = bpSeries(canon.testResults || []).readings;
+  const bp = bpAll.length ? {
+    count: bpAll.length, since: bpAll[bpAll.length - 1].at, latest: bpAll[0],
+    last7: bpAll.filter(r => now.getTime() - new Date(r.at).getTime() <= 7 * DAY).length,
+    recent: bpAll.slice(0, 14),
+  } : null;
   return {
-    facts: facts(canon), symptoms: symptomTimeline(canon, now), adherence: adherence(canon, now),
+    bp, facts: facts(canon), symptoms: symptomTimeline(canon, now), adherence: adherence(canon, now),
     results, checks, answered, foundOut, said, concerns, photos, since: first,
     entries: notes.length + (canon.checkins || []).length + (canon.testResults || []).length,
   };
@@ -143,6 +149,10 @@ const num = v => (Math.round(v * 100) / 100).toString();
 export function bankItems(b) {
   const groups = [];
   const add = (title, items) => { if (items.length) groups.push({ title, items }); };
+  if (b.bp) add('Blood pressure readings', [
+    `${b.bp.count} reading${b.bp.count === 1 ? '' : 's'} since ${when(b.bp.since)}, ${b.bp.last7} in the last 7 days. Latest ${b.bp.latest.sys}/${b.bp.latest.dia} mmHg on ${when(b.bp.latest.at)}`,
+    `Recent (newest first): ${b.bp.recent.map(r => `${r.sys}/${r.dia} ${when(r.at)}${r.corrected ? ' (corrected)' : ''}`).join('; ')}`,
+  ]);
   add('Symptoms over time', b.symptoms.map(s => `${s.label}: ${s.count} time${s.count === 1 ? '' : 's'}, last ${when(s.last)} (${s.trend})`));
   add('Results over time', b.results.map(r => `${r.label}: ${r.values.map(v => num(v.value)).join(' → ')}${r.unit ? ' ' + r.unit : ''}${r.trend ? ` (${r.trend})` : ''}, latest ${when(r.last.date)}`));
   const a = b.adherence;

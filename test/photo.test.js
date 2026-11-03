@@ -37,3 +37,9 @@ test('phones get chat notes without the stored answer data', () => {
   assert.equal(s.notes[0].text, 'CONCERN: q\nURGENCY: soon\nANSWER: a');
   assert.match(s.notes[1].text, /DATA/);
 });
+
+test('a monitor reading under any label files as blood pressure', async () => {
+  const { cleanResults } = await import('../lib/photo.js');
+  const [row] = cleanResults([{ date: '2026-11-03', test: 'SYS/DIA', result: '135/85 mmHg' }], {}, '2026-11-03');
+  assert.equal(row.test, 'Blood pressure');
+});

@@ -12,6 +12,8 @@ import { RESULTS_RULES, cleanResults, imageBlock, checkImage } from '../lib/phot
 import { triage, maxLevel, LEVELS, CONTACTS, CONTACTS_SELF } from '../public/js/triage.js';
 import { bank, bankText, facts, factNote, FACT_TOPICS } from '../public/js/knowledge-bank.js';
 import { melbDay } from '../public/js/kimon-model.js';
+import { medsContext } from '../public/js/meds-model.js';
+import { liveResults } from '../public/js/metrics.js';
 import { person } from '../public/js/people.js';
 import { roster } from '../lib/people.js';
 
@@ -24,12 +26,15 @@ export function patientContext(canon) {
     .map(([k, v]) => `${k}: ${v}`).join('\n');
   const rows = (arr, n, fn) => (arr || []).slice(-n).map(fn).join('\n') || '(none recorded)';
   const routine = /^(nudge-seen|habit|meds-taken|fact|concern)$/;
+  let habits = '(default plan)';
+  try { habits = JSON.stringify(JSON.parse(canon.profile?.care_plan || '{}').habits || []); } catch { /* keep default */ }
+  const labs = liveResults(canon.testResults || []).filter(t => !/blood pressure|\bBP\b/i.test(t.test));
   return [
+    medsContext(canon),
     '## Profile', profile || '(none)',
-    '## Care plan the family set', String(canon.profile?.care_plan || '(default plan)').slice(0, 600),
+    '## Daily habits the family set', habits.slice(0, 600),
     '## Conditions', rows(canon.conditions, 30, c => `- ${c.name} [${c.status}] since ${c.since}. ${c.notes}`),
-    '## Medications', rows(canon.medications, 30, m => `- ${m.name} ${m.dose} ${m.frequency} [${m.status}] started ${m.started}`),
-    '## Test results', rows(canon.testResults, 60, t => `- ${t.date} ${t.test}: ${t.result}${t.notes ? ' (' + t.notes + ')' : ''}`),
+    '## Test results (blood pressure readings are in the knowledge bank)', rows(labs, 60, t => `- ${t.date} ${t.test}: ${t.result}${t.notes ? ' (' + t.notes + ')' : ''}`),
     '## Recent check-ins (oldest first)', rows(canon.checkins, 8, c => `- ${c.tsMelb}: chest=${c.chest} breath=${c.breath} walking=${c.walking} energy=${c.energy} tablets=${c.tablets} mood=${c.mood} -> ${c.verdict}. ${c.notes}`),
     '## Recent logs and notes (oldest first)', rows((canon.notes || []).filter(n => n.by !== 'claude-test' && !routine.test(n.tag)), 20, n => `- ${String(n.tsUTC).slice(0, 10)} [${n.tag}] by ${n.by}: ${String(n.text).replace(/\n(RID|DATA):[\s\S]*$/, '')}`),
     '## Open questions for clinicians', rows((canon.questions || []).filter(q => q.status !== 'answered'), 20, q => `- ${q.id} (${q.askWhom}, p${q.priority}): ${q.question}`),
@@ -53,6 +58,7 @@ How to reply (this is what makes you useful):
 - Concrete next steps: who to contact, how, and the exact words to use. "Ask your doctor" alone is never an answer.
 - If one missing detail would change your advice, end with ONE short question. Then make the first suggested replies likely answers to it.
 - The one firm limit: he must not start, stop or change a prescription medicine, aspirin or supplement without his doctor.
+- His medicines: the "confirmed list" section is the truth and wins over anything learned in chat. If a medicine is not on it, say it is not recorded and ask; never say he is not taking it. Being on the list does not mean he took today's dose. If something is unconfirmed or out of date, say so and suggest he checks it in My medicines.
 - Urgency must be honest. Use "emergency" for a possible heart attack, stroke, collapse, or breathlessness at rest. If symptoms are vague, choose the safer level and say what would change it.
 - Small talk, thanks or a simple follow-up gets a short reply with empty lists. Only fill the lists when they help.
 - Australian context: Medicare, PBS, Victorian services (000, Victorian Virtual ED at vved.org.au, NURSE-ON-CALL 1300 60 60 24, healthdirect 1800 022 222). Kimon is in Melbourne and can dial them. Family members who are overseas cannot dial Australian numbers from abroad.

@@ -44,9 +44,39 @@ function norm(text) {
 }
 const grab = (text, re) => { const m = text.match(re); return m ? num(m[1]) : null; };
 
+// Rows that still stand: a correction (Supersedes) hides the row it replaces,
+// and "not a real reading" hides both. The sheet keeps every row.
+export function liveResults(testResults = []) {
+  const gone = new Set(testResults.map(r => r.supersedes).filter(Boolean));
+  return testResults.filter(r => !(r.id && gone.has(r.id)) && r.result !== 'retracted');
+}
+
+// Every blood pressure reading, newest first, with its history.
+// Typed-in readings carry an exact time (measuredAt); photographed ones only a
+// date. replaced: rows a correction replaced (shown struck through).
+export function bpSeries(testResults = []) {
+  const re = /(?:^|\b)(\d{2,3})\s*\/\s*(\d{2,3})\b/;
+  const isBp = r => /blood pressure|\bBP\b/i.test(`${r.test} ${r.notes || ''}`);
+  const all = testResults.filter(isBp);
+  const byId = new Map(all.filter(r => r.id).map(r => [r.id, r]));
+  const gone = new Set(all.map(r => r.supersedes).filter(Boolean));
+  const at = r => (r.measuredAt && !isNaN(new Date(r.measuredAt)) ? new Date(r.measuredAt).toISOString() : (() => { const p = parseDate(r.date); return p ? new Date(Date.UTC(p.y, p.m, p.d)).toISOString() : ''; })());
+  const read = r => { const m = String(r.result).match(re); return m ? { sys: +m[1], dia: +m[2] } : null; };
+  const live = [], replaced = [];
+  for (const r of all) {
+    const v = read(r);
+    if (r.id && gone.has(r.id)) { if (v) replaced.push({ id: r.id, ...v, at: at(r), by: r.source || '' }); continue; }
+    if (r.result === 'retracted' || !v) continue;
+    const prev = r.supersedes ? byId.get(r.supersedes) : null;
+    live.push({ id: r.id || '', ...v, at: at(r), exactTime: !!r.measuredAt, by: r.source || '', corrected: !!prev, was: prev ? read(prev) : null, from: r.measuredAt ? 'typed' : 'photo' });
+  }
+  const order = (a, b) => String(b.at).localeCompare(String(a.at));
+  return { readings: live.sort(order), replaced: replaced.sort(order), retracted: all.filter(r => r.result === 'retracted').length };
+}
+
 // Latest value per measure across all rows. Each value keeps its row date.
 export function extract(testResults = []) {
-  const rows = [...testResults].sort((a, b) => dateKey(a.date) - dateKey(b.date));
+  const rows = liveResults(testResults).sort((a, b) => dateKey(a.date) - dateKey(b.date) || String(a.measuredAt || '').localeCompare(String(b.measuredAt || '')));
   const out = {};
   const put = (key, value, row, extra = {}) => {
     if (value === null || Number.isNaN(value)) return;
