@@ -13,6 +13,7 @@ import { triage, maxLevel, LEVELS, CONTACTS, CONTACTS_SELF } from '../public/js/
 import { bank, bankText, facts, factNote, FACT_TOPICS } from '../public/js/knowledge-bank.js';
 import { melbDay } from '../public/js/kimon-model.js';
 import { medsContext } from '../public/js/meds-model.js';
+import { MED_CATALOG, strengthsOf } from '../public/js/med-catalog.js';
 import { liveResults } from '../public/js/metrics.js';
 import { person } from '../public/js/people.js';
 import { roster } from '../lib/people.js';
@@ -24,6 +25,22 @@ const PII_KEYS = /medicare|address|street|phone|mobile|email|dob|birth|postcode|
 function leffyBank(canon) {
   const b = bank(canon);
   return { ...b, facts: b.facts.filter(f => f.topic !== 'medicine') };
+}
+
+// Learned medicine facts -> unconfirmed list entries, by exact catalogue match.
+export function medsFromFacts(learned, canon = {}) {
+  const have = new Set((canon.medications || []).filter(m => !/superseded|removed/.test(m.status)).map(m => String(m.name).toLowerCase()));
+  const out = [];
+  for (const f of learned.filter(f => f.topic === 'medicine')) {
+    const text = ' ' + String(f.fact || '').toLowerCase().replace(/[^a-z0-9. ]+/g, ' ') + ' ';
+    for (const [name, doses] of MED_CATALOG) {
+      const key = name.toLowerCase().replace(/\s*\(.*\)/, '');
+      if (!text.includes(' ' + key + ' ') || have.has(name.toLowerCase()) || out.some(o => o.name === name)) continue;
+      const dose = doses.find(d => text.includes(' ' + d.toLowerCase() + ' ') || text.includes(' ' + d.toLowerCase().replace(' ', '') + ' ')) || '';
+      out.push({ name, dose, frequency: '', status: 'unconfirmed' });
+    }
+  }
+  return out;
 }
 
 export function patientContext(canon) {
@@ -273,6 +290,11 @@ export default async function handler(req, res) {
         try { await write('note', factNote(f, image ? 'photo' : 'chat'), by, { timeoutMs: 10000, opId: `fact-${rid}-${i}` }); n++; } catch { /* keep going */ }
       }
       send({ type: 'learned', facts: learned, saved: n });
+      // A listed medicine named in chat goes on his list as "not sure yet", for
+      // him to confirm. Only exact names and strengths from the fixed list.
+      for (const p of medsFromFacts(learned, canon)) {
+        try { await write('medication', p, by, { timeoutMs: 10000, opId: `med-${rid}-${p.name}` }); } catch { /* the fact is still kept */ }
+      }
     }
   } catch (e) {
     console.error(JSON.stringify({ askCrash: String(e.message).slice(0, 300) }));
