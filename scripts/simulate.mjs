@@ -269,8 +269,9 @@ const fix = await opW('reading', { id: 'sim-r2', sys: '126', dia: '82', measured
 const staleFact = factNote({ fact: 'Kimon says he is not on any cholesterol tablet', topic: 'medicine' });
 await fam.call('/api/write', { action: 'note', payload: staleFact, by: 'Sam', opId: 'sim-op-3' });
 await new Promise(r => setTimeout(r, 1100));
-const med1 = await opW('medication', { name: 'Medicine A (synthetic)', dose: '10 mg', frequency: 'night', status: 'current' }, 'sim-op-4');
-const med2 = await opW('medication', { name: 'Medicine A (synthetic)', dose: '20 mg' }, 'sim-op-5');
+const med1 = await opW('medication', { name: 'Atorvastatin', dose: '10 mg', frequency: 'Night', status: 'current' }, 'sim-op-4');
+const medTypo = await opW('medication', { name: 'Atorvastatn', dose: '10 mg', status: 'current' }, 'sim-op-6');
+const med2 = await opW('medication', { name: 'Atorvastatin', dose: '20 mg' }, 'sim-op-5');
 const c2 = await kim.call('/api/canon');
 check('BP: a reading sent three times with one opId is saved once, attributed to Kimon', () => {
   assert.equal(bp1.ok && bp2.ok && bp3.ok, true);
@@ -287,9 +288,13 @@ check('BP: a correction replaces the reading in every view and keeps the origina
 check('Medicines: a correction persists with Kimon as author and reaches Leffy first', () => {
   assert.equal(med1.ok && med2.ok, true);
   const ctx = patientContext(c2);
-  assert.match(ctx, /Medicine A \(synthetic\) 20 mg, night/);
-  assert.ok(ctx.indexOf('Medicine A (synthetic) 20 mg') < ctx.indexOf('not on any cholesterol tablet'));
+  assert.match(ctx, /Atorvastatin 20 mg, Night/);
+  assert.ok(ctx.indexOf('Atorvastatin 20 mg') < ctx.indexOf('not on any cholesterol tablet'));
   assert.ok(c2.changelog.some(x => x.tab === 'Medications' && x.by === 'Kimon' && x.new === '20 mg'));
+});
+check('Medicines: a misspelt or unlisted name is refused before it reaches the sheet', () => {
+  assert.equal(medTypo.ok, false); assert.equal(medTypo.status, 400);
+  assert.ok(!c2.medications.some(m => m.name === 'Atorvastatn'));
 });
 check('Medicines: an older chat fact is labelled out of date, not trusted', () => {
   assert.match(medsContext(c2), /not on any cholesterol tablet \[older than the latest list change/);

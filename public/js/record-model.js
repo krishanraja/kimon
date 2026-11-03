@@ -1,6 +1,6 @@
 // Pure data shaping for the record spokes: tasks from knowledge gaps, and the
 // history timeline. No DOM; unit tested.
-import { extract, MEASURES, dateKey, fmtDate } from './metrics.js';
+import { extract, MEASURES, dateKey, fmtDate, liveResults } from './metrics.js';
 
 // Plain-English titles for the sheet's standing gaps (reading age 12).
 const PLAIN = {
@@ -83,7 +83,9 @@ function testTitle(t) { const s = String(t).replace(/\s*\([^)]*\)\s*$/, '').repl
 // Timeline events, newest first. Test rows by an automated tester are hidden.
 export function historyEvents(canon, { him = 'Kimon' } = {}) {
   const ev = [];
-  for (const r of canon.testResults || []) {
+  // Corrections and removals resolved; daily typed BP readings live in their
+  // own chart, so the timeline keeps labs, scans and photographed results.
+  for (const r of liveResults(canon.testResults || []).filter(r => !r.measuredAt)) {
     ev.push({ key: dateKey(r.date), ts: '', kind: /calcium|CT/i.test(r.test) ? 'scan' : 'bloods', title: testTitle(r.test), detail: summariseTest(r) });
   }
   const concerns = new Map();

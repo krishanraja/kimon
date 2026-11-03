@@ -97,3 +97,21 @@ test('a fact learned earlier the same day as a correction is still out of date',
   post(s, 'medication', { name: 'Medicine A (synthetic)', status: 'current' }, 'op-1');
   assert.equal(currentMeds(read(s)).chat[0].stale, true);
 });
+
+test("a chat-learned medicine fact reaches Leffy once, marked unconfirmed", () => {
+  const s = api();
+  const f = factNote({ fact: 'Takes a cholesterol tablet at night', topic: 'medicine' });
+  s.tabs.Notes.appendRow([new Date().toISOString(), 'Sam', f.text, f.tag]);
+  const ctx = patientContext(read(s));
+  assert.equal(ctx.split('Takes a cholesterol tablet at night').length - 1, 1);
+  assert.match(ctx, /Picked up in chat \(unconfirmed/);
+});
+
+test('medicine writes only accept listed names, strengths and times', async () => {
+  const { checkMedWrite } = await import('../public/js/med-catalog.js');
+  assert.equal(checkMedWrite({ name: 'Atorvastatin', dose: '10 mg', frequency: 'Night', status: 'unconfirmed' }), null);
+  assert.equal(checkMedWrite({ name: 'Atorvastatn', dose: '10 mg' }), 'medicine not on the list');
+  assert.equal(checkMedWrite({ name: 'Atorvastatin', dose: '15 mg' }), 'strength not on the list');
+  assert.equal(checkMedWrite({ name: 'Atorvastatin', frequency: 'whenever' }), 'time not on the list');
+  assert.equal(checkMedWrite({ name: 'Old typed name', status: 'stopped', existing: true }), null);
+});

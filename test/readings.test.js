@@ -118,3 +118,14 @@ test('the secret can live in Script Properties, so pasting new code never wipes 
   assert.equal(s.get({ secret: 'from-properties', action: 'ping' }).ok, true);
   assert.equal(s.get({ secret: '__APP_SECRET__', action: 'ping' }).ok, false);
 });
+
+test('the family timeline keeps labs and photos, not every typed reading or removed row', async () => {
+  const { historyEvents } = await import('../public/js/record-model.js');
+  const s = api();
+  post(s, 'reading', reading('r1', 128, 82), 'op-1');
+  post(s, 'reading', { id: 'r2', measuredAt: '2026-11-03T20:40:00.000Z', supersedes: 'r1', retract: true }, 'op-2');
+  post(s, 'testResult', { date: '2026-11-01', test: 'LDL-C', result: '2.1 mmol/L' }, 'op-3');
+  const ev = historyEvents(canon(s));
+  assert.equal(ev.filter(e => /blood pressure/i.test(e.title)).length, 0);
+  assert.equal(ev.filter(e => /LDL/i.test(e.title)).length, 1);
+});
