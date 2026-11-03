@@ -79,3 +79,14 @@ test('blocked storage is reported, never a silent loss', async () => {
   const ob = createOutbox({ storage: broken, fetchFn: s.fetchFn });
   assert.equal((await ob.send('reading', bp('r1'))).status, 'unsafe');
 });
+
+test('an older sheet script that does not know the action keeps the entry, then sends it', async () => {
+  const storage = mem(); let updated = false; let rows = 0;
+  const fetchFn = async () => updated ? (rows++, reply(200, { ok: true })) : reply(502, { ok: false, error: 'sheet API: unknown action: reading' });
+  const ob = createOutbox({ storage, fetchFn });
+  assert.equal((await ob.send('reading', bp('r1'))).status, 'queued');
+  assert.equal(ob.count(), 1);
+  updated = true;
+  await ob.flush();
+  assert.deepEqual([ob.count(), rows], [0, 1]);
+});

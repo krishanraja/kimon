@@ -32,8 +32,10 @@ export function createOutbox({ storage, fetchFn = globalThis.fetch, key = 'kimon
     if (r.ok) return 'saved';
     if (r.status >= 400 && r.status < 500) return 'rejected';
     // 502 from our API wraps a sheet error; the body says whether the entry was bad.
+    // "unknown action" means the sheet script is older than the app: keep the
+    // entry on the phone and send it once the script is updated.
     const body = await r.json().catch(() => ({}));
-    if (/^sheet API: (missing field|bad |unknown action)/.test(body.error || '')) return 'rejected';
+    if (/^sheet API: (missing field|bad )/.test(body.error || '')) return 'rejected';
     return 'queued';
   }
 

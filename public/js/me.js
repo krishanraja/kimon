@@ -334,7 +334,7 @@ function savedScreen(p, st) {
   const msg = ok ? `Your family and Leffy can see it now. ${count} reading${count === 1 ? '' : 's'} so far.`
     : st === 'auth' ? 'Kept on this phone. Log in again and it sends by itself.'
       : st === 'unsafe' ? 'Not saved, and this phone could not keep a copy. Keep the app open and tap Try again.'
-        : "Kept on this phone. It sends by itself when you're online. Your family can't see it yet.";
+        : "Kept on this phone. It sends by itself as soon as it can. Your family can't see it yet.";
   frame({
     eyebrow: whenLabel(p.measuredAt), title: ok ? 'Saved' : 'Waiting', tabId: 'today',
     body: `${weekStrip()}<section class="j-card j-saved" role="status">

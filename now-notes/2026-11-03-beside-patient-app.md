@@ -30,3 +30,12 @@
 - Anyone with the family passcode can choose "I'm Kimon", which skews attribution.
 - `readCanon` returns only the last 100 Changelog rows.
 - Photo reading accuracy is unmeasured.
+
+**Test script for Kimon** (not sent; Krish decides when). Give one sentence each and no other help:
+1. "Add this morning's blood pressure." Pass: done unaided, in under 20 seconds after one practice run.
+2. "One of your medicines has the wrong dose. Fix it." Pass: done unaided, in under 30 seconds.
+3. "What was your last reading, and did it save?" Pass: he names the numbers and says "Saved" or "Waiting".
+
+Watch where he hesitates. Do not explain the navigation. Then watch for two weeks whether he returns on his own (`scripts/north-star.mjs` counts it) before claiming any habit.
+
+**Measuring the North Star:** run `SHEET_API_SECRET=... node scripts/north-star.mjs`. It prints only this week's count, active days and kinds of entry. Send no patient data anywhere.
