@@ -187,9 +187,20 @@ async function boot() {
   $('[data-go="check"] span').textContent = isKimon() ? 'Check-in' : `Ask ${me().him}`;
   $('#login').hidden = true; $('#app').hidden = false;
   buildCheck(); buildRecord(); buildDad(); buildChat();
+  // Kimon's "Ask Leffy" tab: open straight on the chat with his own four tabs.
+  if (isKimon() && new URLSearchParams(location.search).has('leffy')) kimonLeffy();
   await flushQueue();
   loadCanon();
   checkPending();
+}
+
+function kimonLeffy() {
+  const ico = { today: '<path d="M6 3.5h11a2 2 0 0 1 2 2v15H7.5A2.5 2.5 0 0 1 5 18V4.5a1 1 0 0 1 1-1z"/><path d="M5 18a2.5 2.5 0 0 1 2.5-2.5H19"/><path d="M9 7.5h6M9 11h4"/>', health: '<path d="M3 12h4l2-5 4 10 2-5h6"/>', meds: '<path d="M10.6 20.1a4.9 4.9 0 0 1-6.9-6.9l9.5-9.5a4.9 4.9 0 0 1 6.9 6.9z"/><path d="M8.4 8.4l7.2 7.2"/>' };
+  const nav = document.querySelector('.nav');
+  nav.innerHTML = [['today', 'Today'], ['health', 'Health'], ['meds', 'Medicines']].map(([k, l]) => `<a class="nav-btn" href="/me?tab=${k}"><svg viewBox="0 0 24 24" aria-hidden="true">${ico[k]}</svg><span>${l}</span></a>`).join('')
+    + `<button class="nav-btn" data-go="ask" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 3l1.6 4.4L16 9l-4.4 1.6L10 15l-1.6-4.4L4 9l4.4-1.6zM18 13l.9 2.1L21 16l-2.1.9L18 19l-.9-2.1L15 16l2.1-.9z"/></svg><span>Ask Leffy</span></button>`;
+  $('#homeBtn').hidden = true;
+  go('ask');
 }
 
 /* ---------------- tabs ---------------- */

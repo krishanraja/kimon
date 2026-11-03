@@ -637,3 +637,5 @@ body:has(#view-ask:not([hidden])) .toast { bottom: auto; top: calc(var(--safe-t)
 
 .msel { width: 100%; min-height: 48px; border-radius: 14px; border: 1.5px solid var(--line); background: var(--card); color: var(--ink); padding: 0 12px; font-size: 17px; }
 .msel:disabled { opacity: .5; }
+
+a.nav-btn { text-decoration: none; }

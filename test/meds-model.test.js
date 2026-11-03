@@ -115,3 +115,14 @@ test('medicine writes only accept listed names, strengths and times', async () =
   assert.equal(checkMedWrite({ name: 'Atorvastatin', frequency: 'whenever' }), 'time not on the list');
   assert.equal(checkMedWrite({ name: 'Old typed name', status: 'stopped', existing: true }), null);
 });
+
+test('a listed medicine named in chat becomes "not sure yet"; vague or unlisted names do not', async () => {
+  const { medsFromFacts } = await import('../api/ask.js');
+  const got = medsFromFacts([
+    { fact: 'Kimon takes atorvastatin 10 mg at night', topic: 'medicine' },
+    { fact: 'He is on a statin', topic: 'medicine' },
+    { fact: 'Takes aspirin every morning', topic: 'medicine' },
+    { fact: 'Walks daily', topic: 'lifestyle' },
+  ], { medications: [{ name: 'Aspirin (low dose)', status: 'current' }] });
+  assert.deepEqual(got, [{ name: 'Atorvastatin', dose: '10 mg', frequency: '', status: 'unconfirmed' }]);
+});
