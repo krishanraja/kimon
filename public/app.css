@@ -634,3 +634,6 @@ body:has(#view-ask:not([hidden])) .toast { bottom: auto; top: calc(var(--safe-t)
 .who-list.compact .who-ic { width: 40px; height: 40px; font-size: 18px; }
 .who-list.compact .who-t small { display: none; }
 .someone { display: grid; gap: 10px; }
+
+.msel { width: 100%; min-height: 48px; border-radius: 14px; border: 1.5px solid var(--line); background: var(--card); color: var(--ink); padding: 0 12px; font-size: 17px; }
+.msel:disabled { opacity: .5; }

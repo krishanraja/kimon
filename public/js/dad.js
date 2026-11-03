@@ -4,6 +4,7 @@ import { monitor, readPlan, HABIT_IDEAS, TAGS, melbDay } from './kimon-model.js'
 import { fmtDate } from './metrics.js';
 import { openSheet } from './record.js';
 import { currentMeds, medLine } from './meds-model.js';
+import { MED_CATALOG, MED_WHEN, strengthsOf } from './med-catalog.js';
 
 let ctx, root, view = 'home';
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -98,8 +99,7 @@ function planView(canon) {
       <div class="plan-list">${plan.habits.map((h, i) => `<div class="plan-row"><button class="toggle ${h.on !== false ? 'on' : ''}" data-tog="${i}" aria-pressed="${h.on !== false}" aria-label="Turn ${esc(h.text)} ${h.on !== false ? 'off' : 'on'}"><i></i></button><span>${esc(h.text)}</span><button class="x" data-rm="${i}" aria-label="Remove">×</button></div>`).join('') || '<p class="soft">No habits yet.</p>'}</div>
       <button class="pill" data-addh>+ Add a habit</button>
       <p class="kicker">Medicines · the same list ${esc(him())} sees and corrects</p>
-      <div class="plan-list">${meds.current.map(m => `<div class="plan-row"><span><b>${esc(medLine(m))}</b></span><button class="x" data-stop="${esc(m.name)}" aria-label="Mark ${esc(m.name)} as stopped">×</button></div>`).join('')}${meds.unconfirmed.map(m => `<div class="plan-row"><span><b>${esc(medLine(m))}</b> · waiting for ${esc(him())} to confirm</span></div>`).join('') || (meds.current.length ? '' : '<p class="soft">None recorded yet. Add one once his doctor prescribes it.</p>')}</div>
-      ${meds.chat.filter(f => !f.mentionsCurrent).length ? `<p class="soft">Heard in chat, not on the list yet:</p><div class="plan-list">${meds.chat.filter(f => !f.mentionsCurrent).slice(0, 4).map(f => `<div class="plan-row"><span>“${esc(f.text)}”</span></div>`).join('')}</div>` : ''}
+      <div class="plan-list">${meds.current.map(m => `<div class="plan-row"><span><b>${esc(medLine(m))}</b></span><button class="x" data-stop="${esc(m.name)}" aria-label="Mark ${esc(m.name)} as stopped">×</button></div>`).join('')}${meds.unconfirmed.map(m => `<div class="plan-row"><span><b>${esc(medLine(m))}</b> · not confirmed</span></div>`).join('') || (meds.current.length ? '' : '<p class="soft">None recorded yet. Add one once his doctor prescribes it.</p>')}</div>
       <button class="pill" data-addm>+ Add a medicine</button>
     </div></article>
     <button class="btn primary" data-save>Save care plan</button>`;
@@ -116,7 +116,7 @@ function planView(canon) {
       ctx.toast(r.ok ? done : 'Kept on this phone. It will save when you are online.');
     };
     root.querySelectorAll('[data-stop]').forEach(b => b.onclick = () => {
-      if (confirm(`Mark ${b.dataset.stop} as stopped? It stays in his history.`)) saveMed({ name: b.dataset.stop, status: 'stopped' }, 'Marked as stopped');
+      if (confirm(`Mark ${b.dataset.stop} as stopped? It stays in his history.`)) saveMed({ name: b.dataset.stop, status: 'stopped', existing: true }, 'Marked as stopped');
     });
     root.querySelector('[data-addh]').onclick = () => openSheet(`<p class="kicker">Add a habit</p>
       <div class="nudge-picks">${HABIT_IDEAS.filter(x => !plan.habits.some(h => h.text === x)).map(x => `<button class="pill" data-h="${esc(x)}">${esc(x)}</button>`).join('')}</div>
@@ -129,18 +129,22 @@ function planView(canon) {
     // Family adds what they know; by default he confirms it himself on his phone,
     // so the list only says "taking" once he has said so.
     root.querySelector('[data-addm]').onclick = () => openSheet(`<p class="kicker">Add a medicine</p>
-      <input id="medName" maxlength="60" placeholder="Name, as on the box">
-      <input id="medDose" maxlength="40" placeholder="Dose, e.g. 10 mg (optional)">
-      <div class="nudge-picks">${['morning', 'evening', 'with dinner'].map(w => `<button class="pill" data-w="${w}">${w}</button>`).join('')}</div>
+      <select id="medName" class="msel"><option value="">Choose a medicine</option>${MED_CATALOG.map(([n]) => `<option>${esc(n)}</option>`).join('')}</select>
+      <select id="medDose" class="msel" disabled><option value="">Strength: not sure</option></select>
+      <select id="medWhen" class="msel"><option value="">When: not sure</option>${MED_WHEN.map(w => `<option>${esc(w)}</option>`).join('')}</select>
       <div class="nudge-picks"><button class="pill on" data-st="unconfirmed">Ask ${esc(him())} to confirm</button><button class="pill" data-st="current">I know he takes it</button></div>
-      <button class="btn primary" data-ok>Add</button>`, (sheet, close) => {
-      let when = '', status = 'unconfirmed';
-      sheet.querySelectorAll('[data-w]').forEach(b => b.onclick = () => { when = b.dataset.w; sheet.querySelectorAll('[data-w]').forEach(x => x.classList.toggle('on', x === b)); });
+      <button class="btn primary" data-ok disabled>Add</button>`, (sheet, close) => {
+      let status = 'unconfirmed';
+      const nameSel = sheet.querySelector('#medName'), doseSel = sheet.querySelector('#medDose'), ok = sheet.querySelector('[data-ok]');
+      nameSel.onchange = () => {
+        doseSel.innerHTML = '<option value="">Strength: not sure</option>' + strengthsOf(nameSel.value).map(d => `<option>${esc(d)}</option>`).join('');
+        doseSel.disabled = !nameSel.value; ok.disabled = !nameSel.value;
+      };
       sheet.querySelectorAll('[data-st]').forEach(b => b.onclick = () => { status = b.dataset.st; sheet.querySelectorAll('[data-st]').forEach(x => x.classList.toggle('on', x === b)); });
-      sheet.querySelector('[data-ok]').onclick = () => {
-        const n = sheet.querySelector('#medName').value.trim(); if (!n) return;
+      ok.onclick = () => {
+        const n = nameSel.value; if (!n) return;
         close();
-        saveMed({ name: n, dose: sheet.querySelector('#medDose').value.trim(), frequency: when, status }, status === 'unconfirmed' ? `Added. ${him()} will be asked to confirm it.` : 'Added to his medicines');
+        saveMed({ name: n, dose: doseSel.value, frequency: sheet.querySelector('#medWhen').value, status }, status === 'unconfirmed' ? `Added. ${him()} will be asked to confirm it.` : 'Added to his medicines');
       };
     });
     root.querySelector('[data-save]').onclick = async () => {

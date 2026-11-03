@@ -64,8 +64,6 @@ body.preview .j-title .eyebrow::after { content: " · preview of Kimon's app"; c
 .j-sec { font-size: 13px; font-weight: 650; color: var(--ink-2); letter-spacing: .06em; text-transform: uppercase; height: 16px; padding: 0 4px; flex: none; margin-bottom: -4px; }
 .j-note { font-size: 15px; line-height: 20px; color: var(--ink-2); padding: 0 4px; flex: none; }
 .j-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; flex: none; }
-.j-note.heard span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.j-note.heard { background: var(--j-tile-fam); color: var(--ink); border-radius: 14px; padding: 10px 12px; }
 .j-note.warn { color: var(--ink); background: var(--j-wait-soft); border-radius: 14px; padding: 10px 12px; }
 
 /* week strip: 7 columns; each day shows the top number he saved and a tablets mark */
@@ -193,6 +191,9 @@ button.j-row:active, a.j-row:active { background: var(--accent-soft); }
 .j-opt[aria-checked="true"] .j-dot::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #fff; }
 .j-input { display: grid; gap: 6px; flex: none; }
 .j-input label { font-size: 15px; font-weight: 650; color: var(--ink-2); padding: 0 4px; }
+.j-input select { width: 100%; height: 54px; border-radius: 16px; border: 2px solid var(--line); background: var(--card); padding: 0 40px 0 14px; font-size: 18px; color: var(--ink); appearance: none; -webkit-appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--ink-2) 50%), linear-gradient(135deg, var(--ink-2) 50%, transparent 50%); background-position: calc(100% - 22px) 24px, calc(100% - 16px) 24px; background-size: 6px 6px; background-repeat: no-repeat; text-overflow: ellipsis; }
+.j-input select:disabled { opacity: .5; }
+.j-input select:focus { border-color: var(--accent); outline: none; }
 .j-input input, .j-input textarea { width: 100%; height: 54px; border-radius: 16px; border: 2px solid var(--line); background: var(--card); padding: 0 14px; font-size: 18px; color: var(--ink); }
 .j-input textarea { height: 132px; padding: 12px 14px; resize: none; line-height: 1.35; }
 .j-input input:focus, .j-input textarea:focus { border-color: var(--accent); outline: none; }
