@@ -26,6 +26,9 @@ const outbox = createOutbox({ storage: ls });
 let canon = store.get('canon', null);
 let loadedAt = store.get('loadedAt', '');
 let fresh = false; // true once the server answered this session
+// 'fresh' = loaded from the server now; 'copy' = an older copy on this phone;
+// 'none' = nothing loaded. Never show an empty record as if it were the truth.
+const recordState = () => (fresh ? 'fresh' : loadedAt ? 'copy' : 'none');
 // Old queue items (before opIds): move them into the outbox once.
 for (const it of store.get('queue', [])) outbox.pending().some(x => x.payload === it.payload) || ls.setItem('kimon.me.outbox', JSON.stringify([...outbox.pending(), { ...it, opId: newOpId(), ts: new Date().toISOString() }]));
 store.set('queue', []);
@@ -144,8 +147,16 @@ const onAll = (sel, fn) => app.querySelectorAll(sel).forEach(el => el.onclick = 
 
 // How many list rows of a given height fit above the action zone, given
 // what else is on the screen. Lists page instead of ever scrolling.
-function fits(rowH, other) {
-  const h = (app.clientHeight || innerHeight) - 128 - 16 - 54 - other;
+// A size variable in real pixels (they are calc() expressions in the CSS).
+function px(v) {
+  const probe = document.createElement('div');
+  probe.style.cssText = `position:absolute;visibility:hidden;height:var(${v})`;
+  app.appendChild(probe); const h = probe.getBoundingClientRect().height; probe.remove();
+  return h;
+}
+function fits(rowVar, other) {
+  const rowH = px(rowVar), gap = px('--gap');
+  const h = (app.clientHeight || innerHeight) - 128 - 16 - 54 - other - gap * 2;
   return Math.max(1, Math.floor(h / rowH));
 }
 
@@ -184,24 +195,27 @@ function todayState() {
 function todayScreen() {
   current = todayScreen; app.dataset.home = '1';
   const s = todayState();
+  const rec = recordState();
   const r = s.latest;
   const rStatus = r ? statusOf(r) : null;
   const bp = r
     ? `<b class="num">${r.sys} / ${r.dia}<em>mmHg</em></b>${rStatus === 'wait' ? '<small class="wait">Waiting to send</small>' : `<small>Measured ${esc(timeOf(r.at))}</small>`}`
-    : s.last ? `<b class="dim">Blood pressure</b><small>Last: ${s.last.sys}/${s.last.dia}, ${esc(whenLabel(s.last.at))}</small>` : '<b class="dim">Blood pressure</b><small>No readings yet</small>';
+    : s.last ? `<b class="dim">Blood pressure</b><small>Last: ${s.last.sys}/${s.last.dia}, ${esc(whenLabel(s.last.at))}</small>` : `<b class="dim">Blood pressure</b><small>${rec === 'none' ? 'Past readings not loaded' : 'No readings yet'}</small>`;
   const bpChip = r ? (rStatus === 'wait' ? chip('wait', 'On phone', 'phoneoff') : chip('ok', 'Saved', 'check')) : chip('todo', 'To do');
   const nMeds = s.meds.current.length;
-  const tb = !nMeds && s.meds.empty ? '<b class="dim">Today\'s tablets</b><small>No medicines listed yet</small>'
+  const tb = rec === 'none' ? '<b class="dim">Today\'s tablets</b><small>Medicines not loaded</small>'
+    : !nMeds && s.meds.empty ? '<b class="dim">Today\'s tablets</b><small>No medicines listed yet</small>'
     : s.took ? '<b>Today\'s tablets</b><small>Ticked today</small>' : `<b>Today's tablets</b><small>${nMeds ? `${nMeds} medicine${nMeds === 1 ? '' : 's'} on your list` : 'Check your list'}</small>`;
-  const tbChip = s.meds.empty ? chip('none', 'None') : s.took ? chip('ok', 'Taken', 'check') : chip('todo', 'To do');
+  const tbChip = rec === 'none' ? chip('none', 'Not loaded') : s.meds.empty ? chip('none', 'None') : s.took ? chip('ok', 'Taken', 'check') : chip('todo', 'To do');
   const fam = s.nudge
     ? `<b>From ${esc(/^(app|)$/i.test(s.nudge.from) ? 'family' : s.nudge.from)}</b><small>“${esc(s.nudge.text)}”</small>`
     : '<b>Tell the family</b><small>How you are, or just hello</small>';
   const left = [!r, !s.meds.empty && !s.took].filter(Boolean).length;
   // One status line, most important first. Fixed slot; nothing else moves.
   const head = !storageOk ? '<span class="stale">Not kept on this phone</span>'
+    : rec === 'none' ? '<span class="stale">Your record did not load</span>'
     : s.waiting.length ? `<span class="stale">${s.waiting.length} waiting to send</span>`
-      : !fresh && loadedAt ? `<span class="stale">Phone copy from ${esc(timeOf(loadedAt))}</span>`
+      : rec === 'copy' ? `<span class="stale">Phone copy from ${esc(timeOf(loadedAt))}</span>`
         : `<span>${left ? `${left} thing${left === 1 ? '' : 's'} left` : 'All done today'}</span>`;
 
   // The one thing to do now.
@@ -354,7 +368,7 @@ function savedScreen(p, st) {
 function readingsScreen(back, page = 0) {
   app.dataset.home = '';
   const { readings: rs, replaced } = bpSeries(canon?.testResults || []);
-  const per = fits(56, 44 + 24 + 8), start = page * per;
+  const per = fits('--row', 44 + 8), start = page * per;
   const shown = rs.slice(start, start + per);
   const row = r => `<button class="j-row" data-r="${esc(r.id)}" ${r.id ? '' : 'disabled'}><span class="j-ic bp">${ic('gauge', 's20')}</span>
       <span class="j-tx"><b class="num">${r.sys} / ${r.dia}<em>mmHg</em></b><small>${esc(r.exactTime ? whenLabel(r.at) : fmtDate(melbDay(r.at)) + ' · from a photo')}${r.corrected ? ` · fixed from ${r.was.sys}/${r.was.dia}` : ''}</small></span>
@@ -405,11 +419,13 @@ function healthScreen() {
   current = healthScreen; app.dataset.home = '1';
   const rs = readings().filter(r => Date.now() - new Date(r.at).getTime() <= 30 * 86400000).reverse();
   let chart;
-  if (rs.length < 2) chart = `<div class="j-empty-chart">${rs.length ? 'One reading so far. Your chart draws itself from the second one.' : 'Your chart draws itself here after your first readings.'}</div>`;
+  if (recordState() === 'none') chart = '<div class="j-empty-chart">Your readings could not load right now. Anything you add is kept on this phone.</div>';
+  else if (rs.length < 2) chart = `<div class="j-empty-chart">${rs.length ? 'One reading so far. Your chart draws itself from the second one.' : 'Your chart draws itself here after your first readings.'}</div>`;
   else {
     const all = rs.flatMap(p => [p.sys, p.dia]);
     const lo = Math.floor((Math.min(...all) - 6) / 10) * 10, hi = Math.ceil((Math.max(...all) + 4) / 10) * 10;
-    const W = 300, H = 100, L = 26, R = 4, T = 6, B = 16;
+    // Drawn at the card's real size so text and lines never stretch.
+    const W = Math.max(240, Math.round((app.clientWidth || 360) - 60)), H = Math.max(80, Math.round(px('--chart') - 72)), L = 26, R = 4, T = 6, B = 16;
     const t0 = new Date(rs[0].at).getTime(), t1 = new Date(rs[rs.length - 1].at).getTime() || t0 + 1;
     const x = r => L + ((new Date(r.at).getTime() - t0) / Math.max(1, t1 - t0)) * (W - L - R);
     const y = v => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
@@ -421,7 +437,7 @@ function healthScreen() {
     const last = rs[rs.length - 1];
     const dots = (k, c) => rs.map(p => `<circle cx="${x(p).toFixed(1)}" cy="${y(p[k]).toFixed(1)}" r="${p === last ? 4.5 : 2.6}" fill="${p === last ? c : 'var(--card)'}" stroke="${statusOf(p) === 'wait' ? 'var(--j-wait)' : c}" stroke-width="2"/>`).join('');
     const xl = [rs[0], last].map((p, i) => `<text x="${x(p)}" y="${H - 1}" text-anchor="${i ? 'end' : 'start'}">${i && melbDay(p.at) === today() ? 'Today' : fmtDate(melbDay(p.at))}</text>`).join('');
-    chart = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Blood pressure, ${rs.length} readings in the last 30 days, average ${avg('sys')} over ${avg('dia')}">
+    chart = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Blood pressure, ${rs.length} readings in the last 30 days, average ${avg('sys')} over ${avg('dia')}">
       ${grid}
       <line x1="${L}" x2="${W - R}" y1="${y(avg('sys'))}" y2="${y(avg('sys'))}" stroke="var(--ink-3)" stroke-dasharray="4 4" stroke-width="1.2"/>
       <line x1="${L}" x2="${W - R}" y1="${y(avg('dia'))}" y2="${y(avg('dia'))}" stroke="var(--ink-3)" stroke-dasharray="4 4" stroke-width="1.2"/>
@@ -434,7 +450,7 @@ function healthScreen() {
   const checkDue = !lastCheck || Date.now() - new Date(lastCheck).getTime() > 6 * 86400000;
   const all = readings();
   frame({
-    eyebrow: 'Your heart over time', title: 'Health', tabId: 'health',
+    eyebrow: recordState() === 'none' ? 'Your record did not load' : recordState() === 'copy' ? `Phone copy from ${timeOf(loadedAt)}` : 'Your heart over time', title: 'Health', tabId: 'health',
     body: `<section class="j-card j-chart" aria-label="Blood pressure, last 30 days">
         <div class="j-chart-h"><b>Blood pressure</b><span>Last 30 days</span></div>${chart}</section>
       <section class="j-card j-page">
@@ -455,7 +471,7 @@ function medsScreen(page = 0) {
   const m = currentMeds(canon || {});
   const waiting = outbox.pending().some(x => x.action === 'medication');
   const rows = [...m.unconfirmed.map(x => ({ ...x, kind: 'unsure' })), ...m.current.map(x => ({ ...x, kind: 'current' }))];
-  const per = fits(72, 44 + 24 + 8 + (m.stopped.length ? 72 : 0)), start = page * per;
+  const per = fits('--mrow', 44 + 8 + (m.stopped.length ? px('--mrow') : 0)), start = page * per;
   const shown = rows.slice(start, start + per);
   const row = (x, i) => {
     const [cls, stc, word, icon] = { current: ['tabl', 'ok', 'Taking', 'pill'], unsure: ['unsure', 'wait', 'Not sure yet', 'q'] }[x.kind];
@@ -467,13 +483,15 @@ function medsScreen(page = 0) {
   const check = needsCheck(canon || {});
   const confirmedLine = m.confirmed ? `You checked it ${fmtDate(melbDay(m.confirmed.ts))}` : m.updatedAt ? `Changed ${fmtDate(m.updatedAt)}` : '';
   let act;
-  if (m.empty) act = primary('Add a medicine I take', 'plus', 'data-addmed');
+  if (recordState() === 'none') act = primary('Try again', 'send', 'data-reload');
+  else if (m.empty) act = primary('Add a medicine I take', 'plus', 'data-addmed');
   else if (first) act = primary(`Check ${first.name.length > 18 ? 'this medicine' : first.name}`, 'q', 'data-first');
   else if (check) act = primary('Yes, this list is right', 'check', 'data-right');
   else act = primary('Add a medicine I take', 'plus', 'data-addmed');
   frame({
     eyebrow: waiting ? 'A change is waiting to send' : confirmedLine || 'What you take', title: 'Medicines', tabId: 'meds',
-    body: m.empty ? '<section class="j-card j-chart"><div class="j-empty-chart" style="height:140px">No medicines are listed yet. Add the ones you take, as written on the box.</div></section>'
+    body: recordState() === 'none' ? '<section class="j-card j-chart"><div class="j-empty-chart">Your medicines could not load right now. Try again in a moment.</div></section>'
+      : m.empty ? '<section class="j-card j-chart"><div class="j-empty-chart">No medicines are listed yet. Add the ones you take, as written on the box.</div></section>'
       : `<section class="j-card j-page j-meds" aria-label="Medicine list">${shown.map(row).join('')}${stoppedRow}</section>
       <div class="j-foot"><span>${rows.length > per ? `${start + 1}–${Math.min(rows.length, start + per)} of ${rows.length}` : 'Ticking tablets is on Today'}</span>
         <span>${start > 0 ? '<button data-prev>Back</button>' : ''}${start + per < rows.length ? ' <button data-next>More</button>' : (m.empty || first || check ? '' : '')}${!first && !m.empty && check ? '' : ''}</span></div>`,
@@ -482,6 +500,7 @@ function medsScreen(page = 0) {
   onAll('[data-m]', b => medCheck(rows[+b.dataset.m]));
   on('[data-first]', () => medCheck({ ...first, kind: 'unsure' }));
   on('[data-addmed]', () => medDetails(null));
+  on('[data-reload]', async () => { await load(); medsScreen(); });
   on('[data-prev]', () => medsScreen(page - 1));
   on('[data-next]', () => medsScreen(page + 1));
   on('[data-stopped]', () => stoppedScreen());
