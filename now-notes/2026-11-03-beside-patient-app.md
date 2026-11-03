@@ -1,6 +1,6 @@
 # 2026-11-03: Beside, the patient's own app rebuilt around one repeat action
 
-**Status:** built on branch `claude/epic-feynman-bd1048`. It is waiting on Krish's design approval, which has not been given yet. Not deployed. The Apps Script change has not been redeployed.
+**Status:** design approved by Krish on 2026-11-03 (approved revision `f86e242`). Built on branch `claude/epic-feynman-bd1048`; a Vercel preview is ready. Not in production. The Apps Script change has not been redeployed yet. That has to happen before production, or the new reading saves are refused.
 
 **What changed**
 - **The patient app now has three tabs: Today, Health and Medicines.** "I feel unwell" is in the header on every screen. Every screen has one primary action, sitting just above the tabs.
@@ -19,12 +19,10 @@
 - At 200% zoom the page scrolls instead of clipping. Keyboard focus reaches the primary action.
 
 **Waiting on Krish**
-- Design approval.
-- Push.
 - Apps Script redeploy. On first use this adds MeasuredAt/Id/Supersedes columns and an Ops tab to the live sheet.
 - Vercel deploy.
 
-**Next step:** with approval, deploy, then watch whether Kimon returns on his own over two weeks. The usability test script is in the release report and has not been sent.
+**Next step:** Krish redeploys the Apps Script as a new version of the existing deployment. Then main is merged to deploy production, then watch whether Kimon returns on his own over two weeks. The usability test script is in the release report and has not been sent.
 
 **North Star check:** this targets "times a week Kimon adds something himself" directly, because his daily BP reading is now a 3-tap entry. The number is not measured yet (U4). `weeklyKimonEntries` now exists to count it from server-attributed rows. Until Kimon uses the deployed app, the number has not moved.
 
