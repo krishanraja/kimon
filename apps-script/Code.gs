@@ -8,7 +8,22 @@
  * GET ?secret=..&action=read|ping works without preflight.
  */
 
-var APP_SECRET = '__APP_SECRET__'; // replaced at deploy time
+var APP_SECRET = '__APP_SECRET__'; // replaced at deploy time, or leave it and set Script Properties
+
+// The secret lives in Project Settings > Script Properties (key APP_SECRET),
+// so pasting a new version of this file can never wipe it. If neither is set,
+// or the placeholder is still here, every request is refused.
+function appSecret() {
+  var p = '';
+  try { p = PropertiesService.getScriptProperties().getProperty('APP_SECRET') || ''; } catch (e) {}
+  var s = p || APP_SECRET;
+  return (!s || s === '__APP_SECRET__') ? null : s;
+}
+function badSecret(given) {
+  var s = appSecret();
+  if (!s) return err('not configured: set APP_SECRET in Script Properties');
+  return given === s ? null : err('bad secret');
+}
 var TZ = 'Australia/Melbourne';
 
 var OVERWRITE_TABS = ['Profile', 'Conditions', 'Medications', 'Questions', 'KnowledgeGaps'];
@@ -351,7 +366,7 @@ function rememberOp(opId, action, by) {
 function doGet(e) {
   try {
     var p = (e && e.parameter) || {};
-    if (p.secret !== APP_SECRET) return err('bad secret');
+    var no = badSecret(p.secret); if (no) return no;
     if (p.action === 'ping') return json({ ok: true, time: nowUTC() });
     if (p.action === 'read') return json(readCanon());
     return err('unknown action');
@@ -363,7 +378,7 @@ function doGet(e) {
 function doPost(e) {
   try {
     var body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
-    if (body.secret !== APP_SECRET) return err('bad secret');
+    var no = badSecret(body.secret); if (no) return no;
     var fn = ACTIONS[body.action];
     if (!fn) return err('unknown action: ' + body.action);
     var opId = String(body.opId || '').slice(0, 80);

@@ -106,3 +106,15 @@ test('the North Star counts Kimon\'s own entries and active days', () => {
   assert.equal(w.byKind.result, 2);
   assert.equal(w.activeDays >= 2, true);
 });
+
+test('a script still carrying the placeholder secret refuses everyone', () => {
+  const s = createSheetApi({ secret: '__APP_SECRET__' });
+  assert.equal(s.get({ secret: '__APP_SECRET__', action: 'ping' }).ok, false);
+  assert.match(s.get({ secret: '__APP_SECRET__', action: 'read' }).error, /not configured/);
+});
+
+test('the secret can live in Script Properties, so pasting new code never wipes it', () => {
+  const s = createSheetApi({ secret: '__APP_SECRET__', props: { APP_SECRET: 'from-properties' } });
+  assert.equal(s.get({ secret: 'from-properties', action: 'ping' }).ok, true);
+  assert.equal(s.get({ secret: '__APP_SECRET__', action: 'ping' }).ok, false);
+});

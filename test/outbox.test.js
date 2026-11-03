@@ -90,3 +90,9 @@ test('an older sheet script that does not know the action keeps the entry, then 
   await ob.flush();
   assert.deepEqual([ob.count(), rows], [0, 1]);
 });
+
+test('a sheet secret problem keeps the entry instead of dropping it', async () => {
+  const ob = createOutbox({ storage: mem(), fetchFn: async () => reply(502, { ok: false, error: 'sheet API: bad secret' }) });
+  assert.equal((await ob.send('reading', bp('r1'))).status, 'queued');
+  assert.equal(ob.count(), 1);
+});

@@ -22,7 +22,7 @@ svg.i { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-widt
 svg.i.s20 { width: 20px; height: 20px; }
 svg.i.s16 { width: 16px; height: 16px; stroke-width: 2.2; }
 
-.j-app { height: 100dvh; max-width: 520px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: calc(64px + var(--safe-t)) minmax(0, 1fr) calc(64px + var(--safe-b)); }
+.j-app { height: var(--app-h, 100dvh); max-width: 520px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: calc(64px + var(--safe-t)) minmax(0, 1fr) calc(64px + var(--safe-b)); }
 .j-loading { display: grid; place-items: center; height: 100dvh; }
 
 /* header */
@@ -217,3 +217,11 @@ button.j-row:active, a.j-row:active { background: var(--accent-soft); }
   .j-app { height: auto; min-height: 100dvh; grid-template-rows: auto auto auto; }
   .j-main { overflow: visible; }
 }
+
+/* Keyboard open: the tabs step aside so the one action stays visible right
+   above the keyboard; the content may scroll while typing. */
+body.kb .j-app { grid-template-rows: calc(64px + var(--safe-t)) minmax(0, 1fr) 0; }
+body.kb .j-nav { display: none; }
+body.kb .j-main { overflow-y: auto; }
+body.kb .j-main { padding-bottom: 78px; }
+body.kb .j-act { position: fixed; z-index: 5; left: max(16px, calc(50% - 244px)); right: max(16px, calc(50% - 244px)); bottom: calc(8px + var(--kb-gap, 0px)); background: var(--bg); box-shadow: 0 -8px 12px -6px var(--bg); }
