@@ -470,16 +470,21 @@ function medsScreen(page = 0) {
   current = () => medsScreen(page); app.dataset.home = '1';
   const m = currentMeds(canon || {});
   const waiting = outbox.pending().some(x => x.action === 'medication');
-  const rows = [...m.unconfirmed.map(x => ({ ...x, kind: 'unsure' })), ...m.current.map(x => ({ ...x, kind: 'current' }))];
+  // What Leffy heard in chat about medicines not on the list. Shown as a prompt
+  // to add, never as something he takes: names are not guessed from the text.
+  const heard = m.chat.filter(f => !f.mentionsCurrent).map(f => ({ name: f.text, ts: f.ts, kind: 'heard' }));
+  const rows = [...m.unconfirmed.map(x => ({ ...x, kind: 'unsure' })), ...m.current.map(x => ({ ...x, kind: 'current' })), ...heard];
   const per = fits('--mrow', 44 + 8 + (m.stopped.length ? px('--mrow') : 0)), start = page * per;
   const shown = rows.slice(start, start + per);
   const row = (x, i) => {
+    if (x.kind === 'heard') return `<button class="j-row" data-m="${start + i}"><span class="j-ic fam">${ic('chat', 's20')}</span><span class="j-tx"><b>“${esc(x.name)}”</b><small><span class="st wait">Heard in chat</span> · ${esc(fmtDate(melbDay(x.ts)))} · tap to add</small></span>${ic('chev', 's16 chev')}</button>`;
     const [cls, stc, word, icon] = { current: ['tabl', 'ok', 'Taking', 'pill'], unsure: ['unsure', 'wait', 'Not sure yet', 'q'] }[x.kind];
     const detail = [x.dose, x.when].filter(Boolean).join(' · ') || (x.from === 'family-list' ? "from the family's list" : 'no dose recorded');
     return `<button class="j-row ${x.kind === 'unsure' ? 'flag' : ''}" data-m="${start + i}"><span class="j-ic ${cls}">${ic(icon, 's20')}</span><span class="j-tx"><b>${esc(x.name)}</b><small><span class="st ${stc}">${word}</span> · ${esc(detail)}</small></span>${ic('chev', 's16 chev')}</button>`;
   };
   const stoppedRow = m.stopped.length ? `<button class="j-row stopped" data-stopped><span class="j-ic stop">${ic('stop', 's20')}</span><span class="j-tx"><b>Stopped</b><small>${esc(m.stopped.map(x => x.name).join(', '))}</small></span>${ic('chev', 's16 chev')}</button>` : '';
   const first = m.unconfirmed[0];
+  const listEmpty = m.empty && !heard.length;
   const check = needsCheck(canon || {});
   const confirmedLine = m.confirmed ? `You checked it ${fmtDate(melbDay(m.confirmed.ts))}` : m.updatedAt ? `Changed ${fmtDate(m.updatedAt)}` : '';
   let act;
@@ -489,15 +494,15 @@ function medsScreen(page = 0) {
   else if (check) act = primary('Yes, this list is right', 'check', 'data-right');
   else act = primary('Add a medicine I take', 'plus', 'data-addmed');
   frame({
-    eyebrow: waiting ? 'A change is waiting to send' : confirmedLine || 'What you take', title: 'Medicines', tabId: 'meds',
+    eyebrow: waiting ? 'A change is waiting to send' : m.empty && heard.length ? 'Not confirmed' : confirmedLine || 'What you take', title: 'Medicines', tabId: 'meds',
     body: recordState() === 'none' ? '<section class="j-card j-chart"><div class="j-empty-chart">Your medicines could not load right now. Try again in a moment.</div></section>'
-      : m.empty ? '<section class="j-card j-chart"><div class="j-empty-chart">No medicines are listed yet. Add the ones you take, as written on the box.</div></section>'
+      : listEmpty ? '<section class="j-card j-chart"><div class="j-empty-chart">No medicines are listed yet. Add the ones you take, as written on the box.</div></section>'
       : `<section class="j-card j-page j-meds" aria-label="Medicine list">${shown.map(row).join('')}${stoppedRow}</section>
       <div class="j-foot"><span>${rows.length > per ? `${start + 1}–${Math.min(rows.length, start + per)} of ${rows.length}` : 'Ticking tablets is on Today'}</span>
         <span>${start > 0 ? '<button data-prev>Back</button>' : ''}${start + per < rows.length ? ' <button data-next>More</button>' : (m.empty || first || check ? '' : '')}${!first && !m.empty && check ? '' : ''}</span></div>`,
     act,
   });
-  onAll('[data-m]', b => medCheck(rows[+b.dataset.m]));
+  onAll('[data-m]', b => { const x = rows[+b.dataset.m]; x.kind === 'heard' ? medDetails(null, x.name) : medCheck(x); });
   on('[data-first]', () => medCheck({ ...first, kind: 'unsure' }));
   on('[data-addmed]', () => medDetails(null));
   on('[data-reload]', async () => { await load(); medsScreen(); });
@@ -547,12 +552,12 @@ function medCheck(x) {
   draw();
 }
 
-function medDetails(x) {
+function medDetails(x, heard = '') {
   frame({
-    eyebrow: x ? 'As written on the box' : 'Add a medicine', title: x ? 'Details' : 'New medicine', tabId: 'meds', back: () => (x ? medCheck(x) : medsScreen()),
-    body: `<div class="j-input"><label for="mn">Name</label><input id="mn" maxlength="80" autocomplete="off" value="${esc(x?.name || '')}" placeholder="As written on the box"></div>
-      <div class="j-input"><label for="md">Dose <span style="font-weight:500">(optional)</span></label><input id="md" maxlength="40" value="${esc(x?.dose || '')}" placeholder="e.g. 10 mg"></div>
-      <div class="j-input"><label for="mw">When <span style="font-weight:500">(optional)</span></label><input id="mw" maxlength="40" value="${esc(x?.when || '')}" placeholder="e.g. each morning"></div>`,
+    eyebrow: x ? 'As written on the box' : 'New medicine', title: x ? 'Details' : 'Add', tabId: 'meds', back: () => (x ? medCheck(x) : medsScreen()),
+    body: `${heard ? `<p class="j-note heard"><span>Heard in chat: “${esc(heard)}”</span></p>` : ''}<div class="j-input"><label for="mn">Name</label><input id="mn" maxlength="80" autocomplete="off" value="${esc(x?.name || '')}" placeholder="As written on the box"></div>
+      <div class="j-pair"><div class="j-input"><label for="md">Dose <span style="font-weight:500">(optional)</span></label><input id="md" maxlength="40" value="${esc(x?.dose || '')}" placeholder="e.g. 10 mg"></div>
+      <div class="j-input"><label for="mw">When <span style="font-weight:500">(optional)</span></label><input id="mw" maxlength="40" value="${esc(x?.when || '')}" placeholder="e.g. morning"></div></div>`,
     act: primary('Next', '', 'data-next'),
   });
   on('[data-next]', () => {

@@ -19,6 +19,13 @@ import { roster } from '../lib/people.js';
 
 const PII_KEYS = /medicare|address|street|phone|mobile|email|dob|birth|postcode|ihi|dva|insurance number/i;
 
+// The bank without chat-learned medicine facts: those appear once, in the
+// medicines block above, marked unconfirmed. One fact, one place.
+function leffyBank(canon) {
+  const b = bank(canon);
+  return { ...b, facts: b.facts.filter(f => f.topic !== 'medicine') };
+}
+
 export function patientContext(canon) {
   if (!canon) return 'His live record could not be loaded right now. Answer from the evidence corpus and say that his record was unavailable.';
   const profile = Object.entries(canon.profile || {})
@@ -39,7 +46,7 @@ export function patientContext(canon) {
     '## Recent logs and notes (oldest first)', rows((canon.notes || []).filter(n => n.by !== 'claude-test' && !routine.test(n.tag)), 20, n => `- ${String(n.tsUTC).slice(0, 10)} [${n.tag}] by ${n.by}: ${String(n.text).replace(/\n(RID|DATA):[\s\S]*$/, '')}`),
     '## Open questions for clinicians', rows((canon.questions || []).filter(q => q.status !== 'answered'), 20, q => `- ${q.id} (${q.askWhom}, p${q.priority}): ${q.question}`),
     '## Knowledge gaps', rows(canon.gaps, 20, g => `- ${g.id} [${g.status}] ${g.gap}. Closed by: ${g.whatAnswersIt}`),
-    '## Knowledge bank (distilled from every entry since records began)', bankText(bank(canon)),
+    '## Knowledge bank (distilled from every entry since records began)', bankText(leffyBank(canon)),
   ].join('\n');
 }
 
@@ -253,7 +260,7 @@ export default async function handler(req, res) {
         await write('note', {
           text: `CONCERN: ${image ? '[photo] ' : ''}${message}\nURGENCY: ${answer.urgency}\nANSWER: ${answer.reply}\nRID: ${rid}\nDATA: ${JSON.stringify({ answer, source, threadId })}`.slice(0, 40000),
           tag: 'concern',
-        }, by, { timeoutMs: 10000 });
+        }, by, { timeoutMs: 10000, opId: `concern-${rid}` });
         saved = true;
       } catch { /* reply still returned; the phone shows not-saved */ }
     }
@@ -262,8 +269,8 @@ export default async function handler(req, res) {
     // Grow the knowledge bank after the reply is on screen.
     if (canon && learned.length) {
       let n = 0;
-      for (const f of learned) {
-        try { await write('note', factNote(f, image ? 'photo' : 'chat'), by, { timeoutMs: 10000 }); n++; } catch { /* keep going */ }
+      for (const [i, f] of learned.entries()) {
+        try { await write('note', factNote(f, image ? 'photo' : 'chat'), by, { timeoutMs: 10000, opId: `fact-${rid}-${i}` }); n++; } catch { /* keep going */ }
       }
       send({ type: 'learned', facts: learned, saved: n });
     }

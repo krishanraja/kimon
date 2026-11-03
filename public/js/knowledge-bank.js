@@ -127,7 +127,8 @@ export function bank(canon = {}, now = new Date()) {
   const foundOut = notes.filter(n => n.tag === 'found-out').map(n => ({ ts: n.tsUTC, text: noteSummary(n).replace(/^FOUND OUT[^:]*:\s*/i, '') }));
   const said = notes.filter(n => n.tag === TAGS.talk).map(n => ({ ts: n.tsUTC, text: noteSummary(n).replace(/^KIMON SAYS:\s*/i, '') }));
   const concerns = notes.filter(n => n.tag === 'concern').map(n => ({ ts: n.tsUTC, text: (String(n.text).match(/^CONCERN:\s*([\s\S]*?)(?:\nURGENCY:|$)/) || [, ''])[1].trim() })).filter(c => c.text);
-  const photos = (canon.testResults || []).filter(r => /photo/i.test(r.notes || '')).length;
+  const live = liveResults(canon.testResults || []);
+  const photos = live.filter(r => /photo/i.test(r.notes || '')).length;
   const first = [...notes.map(n => n.tsUTC), ...(canon.checkins || []).map(c => c.tsUTC)].filter(Boolean).sort()[0] || '';
   const bpAll = bpSeries(canon.testResults || []).readings;
   const bp = bpAll.length ? {
@@ -138,7 +139,7 @@ export function bank(canon = {}, now = new Date()) {
   return {
     bp, facts: facts(canon), symptoms: symptomTimeline(canon, now), adherence: adherence(canon, now),
     results, checks, answered, foundOut, said, concerns, photos, since: first,
-    entries: notes.length + (canon.checkins || []).length + (canon.testResults || []).length,
+    entries: notes.length + (canon.checkins || []).length + live.length,
   };
 }
 
