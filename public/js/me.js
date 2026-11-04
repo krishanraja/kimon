@@ -1,6 +1,6 @@
 // Kimon's own app. Three tabs: Today (his journal page and week), Health (his
 // readings over time) and Medicines (the one list, easy to correct).
-// "I feel unwell" sits in the header of every screen. Each screen asks one
+// "Feeling unwell?" sits in the header of every screen. Each screen asks one
 // thing of him: one primary button, just above the tabs.
 import { canRecord, startRecording, transcribeBlob, fmtTime } from './recorder.js';
 import { pickPhoto, shrink } from './photo.js';
@@ -134,11 +134,11 @@ function frame({ eyebrow = '', title, back = null, body, act = '', tabId = tab, 
   const t = (id, icon, label) => `<button class="j-tab" data-tab="${id}"${tab === id && !unwell ? ' aria-current="page"' : ''}>${ic(icon)}<span>${label}</span></button>`;
   app.innerHTML = `<header class="j-top">${back ? `<button class="j-backbtn" data-back aria-label="Back">${ic('back')}</button>` : ''}
       <div class="j-title">${eyebrow && !back ? `<span class="eyebrow">${esc(eyebrow)}</span>` : ''}<h1>${esc(title)}</h1></div>
-      <button class="j-unwell" data-unwell${unwell ? ' aria-current="page"' : ''}>${ic('unwell', 's20')}I feel unwell</button></header>
+      ${unwell ? '' : `<button class="j-unwell" data-unwell>${ic('unwell', 's20')}Feeling unwell?</button>`}</header>
     <main class="j-main">${body}${act ? `<div class="j-act j-push">${act}</div>` : ''}</main>
     <nav class="j-nav" aria-label="Sections">${t('today', 'journal', 'Today')}${t('health', 'trend', 'Health')}${t('meds', 'pill', 'Medicines')}${t('leffy', 'leffy', 'Ask Leffy')}</nav>`;
   app.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => go(b.dataset.tab));
-  $('[data-unwell]').onclick = () => unwellScreen();
+  on('[data-unwell]', () => unwellScreen());
   if (back) $('[data-back]').onclick = back;
 }
 function go(id) {
@@ -621,9 +621,10 @@ function unwellScreen() {
     body: `<section class="j-card j-em" role="alert"><span class="j-ic">${ic('phone', 's20')}</span>
         <div><h2>Chest pain, pressure, or hard to breathe?</h2><p>Call 000 for an ambulance now. Sit down, unlock the door if you can, and don't drive.</p></div></section>
       <button class="j-card j-row" data-log><span class="j-ic unsure">${ic('q', 's20')}</span><span class="j-tx"><b>Something else</b><small>Tell us what's happening</small></span>${ic('chev', 's16 chev')}</button>`,
-    act: `<a class="btn primary danger" data-primary href="tel:000">${ic('phone', 's20')}Call 000</a>`,
+    act: `${link("I'm OK, go back", 'data-fine')}<a class="btn primary danger" data-primary href="tel:000">${ic('phone', 's20')}Call 000</a>`,
   });
   on('[data-log]', () => logSymptom());
+  on('[data-fine]', () => go(tab));
 }
 
 function logSymptom() {
@@ -631,9 +632,11 @@ function logSymptom() {
   const step1 = () => {
     frame({
       eyebrow: 'I feel unwell', title: 'Symptoms', tabId: tab, unwell: true, back: unwellScreen,
-      body: `<p class="j-q">What's happening?</p><div class="j-grid">${SYMPTOMS.map(s => `<button class="j-opt" data-s="${s.id}">${esc(s.label)}</button>`).join('')}</div>`,
+      body: `<p class="j-q">What's happening?</p><div class="j-grid">${SYMPTOMS.map(s => `<button class="j-opt${s.id === 'other' ? ' wide' : ''}" data-s="${s.id}">${esc(s.label)}</button>`).join('')}<button class="j-opt wide fine" data-fine>I'm feeling fine</button></div>`,
     });
     onAll('[data-s]', b => { log.symptom = b.dataset.s; step2(); });
+    // Nothing is saved: he just looked, or he feels fine.
+    on('[data-fine]', () => go(tab));
   };
   const lbl = () => SYMPTOMS.find(s => s.id === log.symptom).label;
   const pickStep = (title, list, key, next, backTo) => {
