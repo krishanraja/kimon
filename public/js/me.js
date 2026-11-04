@@ -1,6 +1,6 @@
 // Kimon's own app. Three tabs: Today (his journal page and week), Health (his
 // readings over time) and Medicines (the one list, easy to correct).
-// "Feeling unwell?" sits in the header of every screen. Each screen asks one
+// Each screen asks one
 // thing of him: one primary button, just above the tabs.
 import { canRecord, startRecording, transcribeBlob, fmtTime } from './recorder.js';
 import { pickPhoto, shrink } from './photo.js';
@@ -146,11 +146,10 @@ function frame({ eyebrow = '', title, back = null, body, act = '', tabId = tab, 
   const t = (id, icon, label) => `<button class="j-tab" data-tab="${id}"${tab === id && !unwell ? ' aria-current="page"' : ''}>${ic(icon)}<span>${label}</span></button>`;
   app.innerHTML = `<header class="j-top">${back ? `<button class="j-backbtn" data-back aria-label="Back">${ic('back')}</button>` : ''}
       <div class="j-title">${eyebrow && !back ? `<span class="eyebrow">${esc(eyebrow)}</span>` : ''}<h1>${esc(title)}</h1></div>
-      ${unwell ? '' : `<button class="j-unwell" data-unwell>${ic('unwell', 's20')}Feeling unwell?</button>`}</header>
+</header>
     <main class="j-main">${body}${act ? `<div class="j-act j-push">${act}</div>` : ''}</main>
     <nav class="j-nav" aria-label="Sections">${t('today', 'journal', 'Today')}${t('health', 'trend', 'Health')}${t('meds', 'pill', 'Medicines')}${t('leffy', 'leffy', 'Ask Leffy')}</nav>`;
   app.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => go(b.dataset.tab));
-  on('[data-unwell]', () => unwellScreen());
   if (back) $('[data-back]').onclick = back;
 }
 function go(id) {
@@ -379,7 +378,7 @@ function savedScreen(p, st) {
         <span class="seal ${ok ? '' : 'wait'}">${ic(ok ? 'check' : 'phoneoff')}</span>
         <div><h2>${p.supersedes ? 'Corrected' : 'Blood pressure'}</h2><div class="big">${esc(p.sys)} / ${esc(p.dia)}<em>mmHg</em></div></div>
         <p>${esc(msg)}</p></section>
-        ${level === 'emergency' || level === 'urgent' ? `<button class="j-card j-row" data-flag><span class="j-ic em">${ic('alert', 's20')}</span><span class="j-tx"><b>Feeling unwell with this?</b><small>See what to do now</small></span>${ic('chev', 's16 chev')}</button>` : ''}`,
+        ${level === 'emergency' || level === 'urgent' ? `<button class="j-card j-row" data-flag><span class="j-ic em">${ic('alert', 's20')}</span><span class="j-tx"><b>About this reading</b><small>See what to do</small></span>${ic('chev', 's16 chev')}</button>` : ''}`,
     act: st === 'unsafe' ? primary('Try again', 'send', 'data-retry') : `${link("That's wrong", 'data-fix')}${primary('Done', '', 'data-done')}`,
   });
   on('[data-done]', () => todayScreen());
@@ -480,13 +479,13 @@ function healthScreen() {
       <section class="j-card j-page">
         <button class="j-row short" data-readings><span class="j-ic bp">${ic('list', 's20')}</span><span class="j-tx"><b>All my readings</b><small>${all.length ? `${all.length} saved · tap one to fix it` : 'None yet'}</small></span>${ic('chev', 's16 chev')}</button>
         <button class="j-row short" data-photo><span class="j-ic tabl">${ic('cam', 's20')}</span><span class="j-tx"><b>Photo of a result</b><small>Test, scan, letter or monitor</small></span>${ic('chev', 's16 chev')}</button>
-        <button class="j-row short" data-check><span class="j-ic unsure">${ic('body', 's20')}</span><span class="j-tx"><b>Weekly body check</b><small>${checkDue ? 'Due · five quick questions' : 'Done this week'}</small></span>${ic('chev', 's16 chev')}</button>
+        <button class="j-row short" data-feel><span class="j-ic unsure">${ic('body', 's20')}</span><span class="j-tx"><b>How I'm feeling</b><small>${checkDue ? 'Check-in due · or note a symptom' : 'Check-in or a symptom'}</small></span>${ic('chev', 's16 chev')}</button>
         <a class="j-row short" href="/?full=1"><span class="j-ic fam">${ic('record', 's20')}</span><span class="j-tx"><b>Full record and Leffy</b><small>Results, questions, chat</small></span>${ic('chev', 's16 chev')}</a>
       </section>`,
   });
   on('[data-readings]', () => readingsScreen(() => healthScreen()));
   on('[data-photo]', () => photoResult());
-  on('[data-check]', () => bodyCheck());
+  on('[data-feel]', () => feelingScreen());
 }
 
 /* ---------- Medicines ---------- */
@@ -632,29 +631,33 @@ function medConfirm(before, after) {
 }
 
 /* ---------- urgent help: the existing red-flag rules ---------- */
-function unwellScreen() {
+// A calm way in: the weekly check-in, or noting a symptom. Both use the
+// existing red-flag rules; nothing here says he is unwell.
+function feelingScreen() {
   app.dataset.tabroot = '';
+  const lastCheck = (canon?.notes || []).filter(n => n.tag === TAGS.check).map(n => n.tsUTC).sort().pop();
+  const due = !lastCheck || Date.now() - new Date(lastCheck).getTime() > 6 * 86400000;
   frame({
-    eyebrow: 'I feel unwell', title: 'Get help', tabId: tab, unwell: true, back: () => go(tab),
-    body: `<section class="j-card j-em" role="alert"><span class="j-ic">${ic('phone', 's20')}</span>
-        <div><h2>Chest pain, pressure, or hard to breathe?</h2><p>Call 000 for an ambulance now. Sit down, unlock the door if you can, and don't drive.</p></div></section>
-      <button class="j-card j-row" data-log><span class="j-ic unsure">${ic('q', 's20')}</span><span class="j-tx"><b>Something else</b><small>Tell us what's happening</small></span>${ic('chev', 's16 chev')}</button>`,
-    act: `${link("I'm OK, go back", 'data-fine')}<a class="btn primary danger" data-primary href="tel:000">${ic('phone', 's20')}Call 000</a>`,
+    title: 'Feeling', tabId: 'health', back: () => healthScreen(),
+    body: `<section class="j-card j-page">
+        <button class="j-row" data-check><span class="j-ic unsure">${ic('body', 's20')}</span><span class="j-tx"><b>Weekly check-in</b><small>${due ? 'Due · five quick questions' : 'Done this week'}</small></span>${ic('chev', 's16 chev')}</button>
+        <button class="j-row" data-log><span class="j-ic bp">${ic('q', 's20')}</span><span class="j-tx"><b>Note a symptom</b><small>Anything you noticed</small></span>${ic('chev', 's16 chev')}</button>
+      </section>`,
   });
+  on('[data-check]', () => bodyCheck());
   on('[data-log]', () => logSymptom());
-  on('[data-fine]', () => go(tab));
 }
 
 function logSymptom() {
   const log = {};
   const step1 = () => {
     frame({
-      eyebrow: 'I feel unwell', title: 'Symptoms', tabId: tab, unwell: true, back: unwellScreen,
+      eyebrow: '', title: 'Symptoms', tabId: 'health', back: feelingScreen,
       body: `<p class="j-q">What's happening?</p><div class="j-grid">${SYMPTOMS.map(s => `<button class="j-opt${s.id === 'other' ? ' wide' : ''}" data-s="${s.id}">${esc(s.label)}</button>`).join('')}<button class="j-opt wide fine" data-fine>I'm feeling fine</button></div>`,
     });
     onAll('[data-s]', b => { log.symptom = b.dataset.s; step2(); });
     // Nothing is saved: he just looked, or he feels fine.
-    on('[data-fine]', () => go(tab));
+    on('[data-fine]', () => healthScreen());
   };
   const lbl = () => SYMPTOMS.find(s => s.id === log.symptom).label;
   const pickStep = (title, list, key, next, backTo) => {
@@ -744,7 +747,7 @@ function bodyCheck() {
     const q = BODY_CHECK[i];
     frame({
       eyebrow: `Question ${i + 1} of ${BODY_CHECK.length}`, title: 'Check-in', tabId: 'health',
-      back: () => (i === 0 ? healthScreen() : (i--, step())),
+      back: () => (i === 0 ? feelingScreen() : (i--, step())),
       body: `<p class="j-note">Question ${i + 1} of ${BODY_CHECK.length} · last 7 days</p><p class="j-q">${esc(q.q)}</p>
         <div class="j-opts">${q.opts.map(([v, l]) => `<button class="j-opt" data-a="${v}"><span class="j-dot"></span>${esc(l)}</button>`).join('')}<button class="j-opt" data-a="unsure"><span class="j-dot"></span>Not sure</button></div>`,
     });
