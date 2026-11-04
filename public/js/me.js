@@ -225,9 +225,15 @@ function todayScreen() {
     : !nMeds && s.meds.empty ? '<b class="dim">Today\'s tablets</b><small>No medicines listed yet</small>'
     : s.took ? '<b>Today\'s tablets</b><small>Ticked today</small>' : `<b>Today's tablets</b><small>${nMeds ? `${nMeds} medicine${nMeds === 1 ? '' : 's'} on your list` : 'Check your list'}</small>`;
   const tbChip = rec === 'none' ? chip('none', 'Not loaded') : s.meds.empty ? chip('none', 'None') : s.took ? chip('ok', 'Taken', 'check') : chip('todo', 'To do');
+  // What he sent today stays visible with its real status; a newer family
+  // message takes the row first.
+  const sentToday = (canon?.notes || []).filter(x => x.tag === TAGS.talk && x.by === 'Kimon' && melbDay(x.tsUTC) === today()).pop();
+  const sentWaiting = sentToday && outbox.pending().some(x => x.action === 'note' && x.payload.text === sentToday.text);
   const fam = s.nudge
     ? `<b>From ${esc(/^(app|)$/i.test(s.nudge.from) ? 'family' : s.nudge.from)}</b><small>“${esc(s.nudge.text)}”</small>`
-    : '<b>Tell the family</b><small>How you are, or just hello</small>';
+    : sentToday ? `<b>You sent</b><small>“${esc(String(sentToday.text).replace(/^KIMON SAYS:\s*/, ''))}”</small>`
+      : '<b>Tell the family</b><small>How you are, or just hello</small>';
+  const famChip = s.nudge ? chip('time', timeOf(s.nudge.ts)) : sentToday ? (sentWaiting ? chip('wait', 'On phone', 'phoneoff') : chip('ok', 'Sent', 'check')) : ic('chev', 's16 chev');
   const left = [!r, !s.meds.empty && !s.took].filter(Boolean).length;
   // One status line, most important first. Fixed slot; nothing else moves.
   const head = !storageOk ? '<span class="stale">Not kept on this phone</span>'
@@ -253,7 +259,7 @@ function todayScreen() {
         <div class="j-page-h"><b>Today</b>${head}</div>
         <button class="j-row" data-readings><span class="j-ic bp">${ic('gauge', 's20')}</span><span class="j-tx">${bp}</span>${bpChip}</button>
         <button class="j-row" data-meds><span class="j-ic tabl">${ic('pill', 's20')}</span><span class="j-tx">${tb}</span>${tbChip}</button>
-        <button class="j-row" data-talk><span class="j-ic fam">${ic('chat', 's20')}</span><span class="j-tx">${fam}</span>${s.nudge ? chip('time', timeOf(s.nudge.ts)) : ic('chev', 's16 chev')}</button>
+        <button class="j-row" data-talk><span class="j-ic fam">${ic('chat', 's20')}</span><span class="j-tx">${fam}</span>${famChip}</button>
       </section>
 `,
     act,
@@ -762,9 +768,12 @@ function talk() {
   if (n) note(TAGS.seen, 'Seen the nudge ♥');
   const from = n ? (/^(app|)$/i.test(n.from) ? 'Family' : n.from) : '';
   const said = { text: '' };
-  const sendIt = async text => {
-    const st = await note(TAGS.talk, `KIMON SAYS: ${text}`);
-    todayScreen(); toast(st === 'saved' ? 'Sent to the family ♥' : "Kept on this phone. It sends when you're online.");
+  // One tap: back to Today at once; the send finishes in the background.
+  const sendIt = (text, btn) => {
+    btn?.setAttribute('aria-pressed', 'true');
+    const sending = note(TAGS.talk, `KIMON SAYS: ${text}`);
+    todayScreen(); toast('Sending…', 20000);
+    sending.then(st => { toast(st === 'saved' ? 'Sent to the family ♥' : "Kept on this phone. It sends by itself."); rerender(); });
   };
   const draw = () => {
     frame({
@@ -776,7 +785,7 @@ function talk() {
         : `<button class="btn primary" data-primary data-mic aria-pressed="false">${ic('mic', 's20')}<span>Speak a message</span></button>`,
     });
     let busy = false;
-    onAll('[data-c]', b => { if (busy) return; busy = true; sendIt(TALK_CHIPS[+b.dataset.c]); });
+    onAll('[data-c]', b => { if (busy) return; busy = true; sendIt(TALK_CHIPS[+b.dataset.c], b); });
     on('[data-send]', () => { if (busy) return; busy = true; sendIt(said.text); });
     on('[data-again]', () => { said.text = ''; draw(); });
     wireMic($('[data-mic]'), { get value() { return said.text; }, set value(v) { said.text = v; draw(); } });
