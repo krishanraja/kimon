@@ -73,28 +73,28 @@ function home(canon) {
 
 const NUDGES = ['Proud of you ♥', 'Time for your walk?', 'Did you take your tablets?', 'Can you do your body check?', 'How are you feeling today?'];
 function nudgeSheet(canon) {
+  // One tap sends a ready nudge; or speak one. No typing.
   openSheet(`<p class="kicker">Nudge ${esc(him())}</p>
     <div class="nudge-picks">${NUDGES.map(n => `<button class="pill" data-n="${esc(n)}">${esc(n)}</button>`).join('')}</div>
-    <label class="sr" for="nudgeText">Your message</label>
-    <textarea id="nudgeText" rows="2" maxlength="300" placeholder="Or write your own"></textarea>
-    <div class="row"><button class="micbtn" data-mic aria-pressed="false">${MIC}<span>Speak</span></button><button class="btn primary grow" data-send>Send</button></div>
-    <p class="meta">It shows at the top of his Today screen.</p>`, (sheet, close) => {
-    const ta = sheet.querySelector('#nudgeText');
-    sheet.querySelectorAll('[data-n]').forEach(b => b.onclick = () => { ta.value = b.dataset.n; });
-    const mic = sheet.querySelector('[data-mic]');
-    let stop = null;
-    mic.onclick = () => {
-      if (stop) { stop(); return; }
-      const base = ta.value ? ta.value.trim() + ' ' : '';
-      stop = ctx.listen(t => { ta.value = base + t; }, on => { mic.setAttribute('aria-pressed', String(on === true)); mic.disabled = on === 'busy'; mic.querySelector('span').textContent = on === true ? 'Stop' : on === 'busy' ? 'Writing…' : 'Speak'; if (on === false) stop = null; });
-    };
-    sheet.querySelector('[data-send]').onclick = async () => {
-      const text = ta.value.trim(); if (!text) return;
+    <p class="said" hidden></p>
+    <div class="row"><button class="micbtn" data-mic aria-pressed="false">${MIC}<span>Speak</span></button><button class="btn primary grow" data-send hidden>Send</button></div>
+    <p class="meta">Tap one to send it. It shows at the top of his Today screen.</p>`, (sheet, close) => {
+    let said = '', sent = false;
+    const send = async text => {
+      if (sent || !text) return; sent = true;
       (canon.notes || (canon.notes = [])).push({ tsUTC: new Date().toISOString(), by: ctx.who(), tag: TAGS.nudge, text: `NUDGE: ${text}` });
       close();
       const r = await ctx.save('note', { text: `NUDGE: ${text}`, tag: TAGS.nudge });
       ctx.toast(r.ok ? `Sent. ${him()} sees it on his Today screen.` : 'Saved on this phone, will send');
     };
+    sheet.querySelectorAll('[data-n]').forEach(b => b.onclick = () => send(b.dataset.n));
+    const mic = sheet.querySelector('[data-mic]'), out = sheet.querySelector('.said'), go = sheet.querySelector('[data-send]');
+    let stop = null;
+    mic.onclick = () => {
+      if (stop) { stop(); return; }
+      stop = ctx.listen(t => { said = t.trim(); out.textContent = `“${said}”`; out.hidden = !said; go.hidden = !said; }, on => { mic.setAttribute('aria-pressed', String(on === true)); mic.disabled = on === 'busy'; mic.querySelector('span').textContent = on === true ? 'Stop' : on === 'busy' ? 'Writing…' : 'Speak'; if (on === false) stop = null; });
+    };
+    go.onclick = () => send(said);
   });
 }
 

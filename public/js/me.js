@@ -660,24 +660,30 @@ function logSymptom() {
   };
   const step2 = () => pickStep('When did it start?', WHEN, 'when', step3, step1);
   const step3 = () => pickStep('How bad is it?', SEVERITY, 'severity', step4, step2);
+  // One tap per question: what he was doing and how long it lasted. Speaking
+  // stays as an option, never required. No typing.
+  const DOING = ['Resting', 'Walking', 'Stairs or a hill', 'After eating', 'Just got up'];
+  const LASTED = ['Seconds', 'A few minutes', 'Over 15 minutes', 'Still going'];
   const step4 = () => {
-    const said = { text: '' };
+    const pick = { doing: '', lasted: '' }, said = { text: '' };
     const save = () => {
-      log.note = said.text.trim();
+      log.note = [pick.doing, pick.lasted && `lasted ${pick.lasted.toLowerCase()}`, said.text.trim()].filter(Boolean).join('; ');
       log.level = symptomLevel(log);
       const w = WHEN.find(x => x[0] === log.when)[1], sev = SEVERITY.find(x => x[0] === log.severity)[1];
       // Show what to do first; the save happens alongside and never delays it.
       const saving = note(TAGS.symptom, `SYMPTOM: ${lbl()}, ${w.toLowerCase()}, ${sev.toLowerCase()}${log.note ? '. ' + log.note : ''}`, log);
       result(log.level, saving);
     };
+    const chips = (key, list) => `<div class="j-chips">${list.map(c => `<button class="j-chipbtn" aria-pressed="${pick[key] === c}" data-k="${key}" data-v="${esc(c)}">${esc(c)}</button>`).join('')}</div>`;
     const draw = () => {
       frame({
         eyebrow: lbl(), title: 'Symptoms', tabId: tab, unwell: true, back: step3,
-        body: said.text ? `<section class="j-card j-msg mine"><b>You said</b><span>${esc(said.text)}</span></section>`
-          : `<p class="j-q">Anything else? Say what you were doing, or how long it lasted.</p>
-             <button class="j-card j-row j-speak" data-mic aria-pressed="false"><span class="j-ic bp">${ic('mic', 's20')}</span><span class="j-tx"><b><span>Speak</span></b><small>Optional</small></span></button>`,
-        act: primary(said.text ? 'Save' : 'Save without adding', 'check', 'data-save'),
+        body: `<p class="j-sec">What were you doing?</p>${chips('doing', DOING)}
+          <p class="j-sec">How long did it last?</p>${chips('lasted', LASTED)}
+          ${said.text ? `<section class="j-card j-msg mine"><b>You said</b><span>${esc(said.text)}</span></section>` : ''}`,
+        act: `<button class="j-esc" data-mic aria-pressed="false">${ic('mic', 's20')}<span>Speak</span></button>${primary(pick.doing || pick.lasted || said.text ? 'Save' : 'Skip and save', 'check', 'data-save')}`,
       });
+      app.querySelectorAll('[data-k]').forEach(b => b.onclick = () => { const k = b.dataset.k; pick[k] = pick[k] === b.dataset.v ? '' : b.dataset.v; draw(); });
       let busy = false;
       on('[data-save]', () => { if (busy) return; busy = true; save(); });
       wireMic($('[data-mic]'), { get value() { return said.text; }, set value(v) { said.text = v; draw(); } });
