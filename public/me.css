@@ -277,3 +277,9 @@ body.kb .j-act { position: fixed; z-index: 5; left: max(16px, calc(50% - 244px))
 .j-step-line.done .j-tick { background: var(--accent); border-color: var(--accent); }
 @keyframes jspin { to { transform: rotate(360deg); } }
 .j-speak[aria-pressed="true"] .j-ic { background: var(--j-bad); color: #fff; }
+
+/* one-tap chips: three across, fixed height, tap again to clear */
+.j-chips { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; flex: none; }
+.j-chipbtn { min-height: 48px; border-radius: 14px; background: var(--card); box-shadow: var(--shadow); border: 2px solid transparent; font-size: 15px; font-weight: 600; color: var(--ink); padding: 4px 6px; line-height: 1.2; }
+.j-chipbtn[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.j-esc[data-mic][aria-pressed="true"] { color: var(--j-bad); }
