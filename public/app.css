@@ -639,3 +639,5 @@ body:has(#view-ask:not([hidden])) .toast { bottom: auto; top: calc(var(--safe-t)
 .msel:disabled { opacity: .5; }
 
 a.nav-btn { text-decoration: none; }
+.dad-feed .ev { grid-template-columns: 5.2em 1fr auto; }
+.dad-feed .ev .x { min-width: 44px; min-height: 44px; color: var(--ink-3); font-size: 22px; }

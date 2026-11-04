@@ -1,11 +1,12 @@
 import { requireAuth } from '../lib/auth.js';
 import { readCanon } from '../lib/sheet.js';
+import { liveNotes } from '../public/js/kimon-model.js';
 
 // Saved chat replies carry their full answer data for recovery (/api/answer).
 // Phones only need the summary lines, so the payload stays small as the
 // history grows.
 export function slim(canon) {
-  return { ...canon, notes: (canon.notes || []).map(n => n.tag === 'concern' ? { ...n, text: String(n.text).split('\nRID: ')[0] } : n) };
+  return { ...canon, notes: liveNotes(canon.notes || []).map(n => n.tag === 'concern' ? { ...n, text: String(n.text).split('\nRID: ')[0] } : n) };
 }
 
 export default async function handler(req, res) {

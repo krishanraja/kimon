@@ -1,6 +1,6 @@
 // The family's view of Kimon: monitor what he logs, nudge him, and set his
 // care plan (habits, tablets). Reads and writes the same sheet he uses.
-import { monitor, readPlan, HABIT_IDEAS, TAGS, melbDay } from './kimon-model.js';
+import { monitor, readPlan, HABIT_IDEAS, TAGS, melbDay, removalNote, liveNotes } from './kimon-model.js';
 import { fmtDate } from './metrics.js';
 import { openSheet } from './record.js';
 import { currentMeds, medLine } from './meds-model.js';
@@ -36,9 +36,9 @@ function home(canon) {
   const hasMeds = !currentMeds(canon).empty;
   // Latest few things, newest first: symptoms, what he said, the body check.
   const feed = [
-    ...m.logs.map(l => ({ ts: l.ts, kind: 'Symptom', tone: (LEVEL[l.level] || LEVEL.soon)[1], text: l.summary.replace(/^SYMPTOM:\s*/, ''), chip: LEVEL[l.level] })),
+    ...m.logs.map(l => ({ ts: l.ts, tag: TAGS.symptom, nid: l.nid, kind: 'Symptom', tone: (LEVEL[l.level] || LEVEL.soon)[1], text: l.summary.replace(/^SYMPTOM:\s*/, ''), chip: LEVEL[l.level] })),
     ...m.said.map(s => ({ ts: s.ts, kind: 'He said', tone: 'accent', text: s.text })),
-    ...(m.lastCheck ? [{ ts: m.lastCheck.ts, kind: 'Body check', tone: (LEVEL[m.lastCheck.level] || LEVEL.routine)[1], text: m.lastCheck.summary.replace(/^BODY CHECK:\s*/, ''), chip: LEVEL[m.lastCheck.level] }] : []),
+    ...(m.lastCheck ? [{ ts: m.lastCheck.ts, tag: TAGS.check, nid: m.lastCheck.nid, kind: 'Body check', tone: (LEVEL[m.lastCheck.level] || LEVEL.routine)[1], text: m.lastCheck.summary.replace(/^BODY CHECK:\s*/, ''), chip: LEVEL[m.lastCheck.level] }] : []),
   ].sort((a, b) => String(b.ts).localeCompare(String(a.ts))).slice(0, 3);
 
   root.innerHTML = `<div class="fit dad-home">
@@ -51,12 +51,22 @@ function home(canon) {
       <div class="stat ${m.checkDue ? 'warm' : ''}"><b>${m.lastCheck ? esc(ago(m.lastCheck.ts)) : 'Not yet'}</b><span>${m.checkDue ? 'body check due' : 'last body check'}</span></div>
     </div>
     <section class="card dad-feed${feed.length ? '' : ' empty'}"><p class="kicker">${m.lastSeen ? `Lately · last seen ${esc(ago(m.lastSeen))}` : 'Lately'}</p>
-      ${feed.length ? feed.map(f => `<div class="ev"><i class="ev-kind ${f.tone}">${f.kind}</i><span class="ev-body"><b>${esc(ago(f.ts))}</b>${f.chip ? ` <i class="chip ${f.chip[1]}">${f.chip[0]}</i>` : ''}<span>${esc(f.text)}</span></span></div>`).join('')
+      ${feed.length ? feed.map(f => `<div class="ev"><i class="ev-kind ${f.tone}">${f.kind}</i><span class="ev-body"><b>${esc(ago(f.ts))}</b>${f.chip ? ` <i class="chip ${f.chip[1]}">${f.chip[0]}</i>` : ''}<span>${esc(f.text)}</span></span>${f.tag ? `<button class="x" data-rm-ev="${feed.indexOf(f)}" aria-label="Remove this entry">×</button>` : ''}</div>`).join('')
         : `<h3>Nothing from ${esc(him())} yet</h3><p class="soft">Once he starts using his app, what he logs and says shows up here.</p>`}
     </section>
     <div class="row dad-actions"><button class="btn" data-plan>Care plan</button><button class="btn primary grow" data-nudge>Send a nudge</button></div>
   </div>`;
   root.querySelector('[data-plan]').onclick = () => { view = 'plan'; render(); };
+  // An entry logged by mistake: a "removed" marker hides it everywhere; the sheet keeps both.
+  root.querySelectorAll('[data-rm-ev]').forEach(btn => btn.onclick = async () => {
+    const f = feed[+btn.dataset.rmEv];
+    if (!confirm(`Remove this ${f.kind.toLowerCase()}? Only if it was logged by mistake. It stays in the sheet's history.`)) return;
+    const r = removalNote({ tsUTC: f.ts, tag: f.tag, nid: f.nid });
+    canon.notes = liveNotes([...(canon.notes || []), { ...r, tsUTC: new Date().toISOString(), by: ctx.who() }]);
+    render();
+    const res = await ctx.save('note', r);
+    ctx.toast(res.ok ? 'Removed' : 'Removed here. It will save when you are online.');
+  });
   root.querySelector('[data-nudge]').onclick = () => nudgeSheet(canon);
   root.querySelector('[data-ask]')?.addEventListener('click', () => ctx.openAsk(`${him()} logged this: "${m.alerts[0].text.replace(/^(SYMPTOM|BODY CHECK):\s*/, '')}". What should we do?`));
 }

@@ -11,7 +11,7 @@ import { replyStream } from '../lib/reply-stream.js';
 import { RESULTS_RULES, cleanResults, imageBlock, checkImage } from '../lib/photo.js';
 import { triage, maxLevel, LEVELS, CONTACTS, CONTACTS_SELF } from '../public/js/triage.js';
 import { bank, bankText, facts, factNote, FACT_TOPICS } from '../public/js/knowledge-bank.js';
-import { melbDay } from '../public/js/kimon-model.js';
+import { melbDay, liveNotes } from '../public/js/kimon-model.js';
 import { medsContext } from '../public/js/meds-model.js';
 import { MED_CATALOG, strengthsOf } from '../public/js/med-catalog.js';
 import { liveResults } from '../public/js/metrics.js';
@@ -229,7 +229,7 @@ export default async function handler(req, res) {
     send({ type: 'stage', text: image ? 'Looking at the photo' : 'Reading his record', rid, triage: rules });
 
     let canon = null, recordError = null;
-    try { canon = await readCanon({ timeoutMs: 9000 }); }
+    try { canon = await readCanon({ timeoutMs: 9000 }); canon.notes = liveNotes(canon.notes || []); }
     catch (e) { recordError = e.code === 'NO_SECRET' ? 'Sheet not connected yet' : 'His record could not be loaded'; }
 
     const me = person({ role, who: by === 'app' ? '' : by, calls: body.calls, roster: roster() });

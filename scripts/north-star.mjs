@@ -4,7 +4,7 @@
 // Usage: SHEET_API_SECRET=... node scripts/north-star.mjs [weekStart YYYY-MM-DD]
 //        (or MOCK: start scripts/dev-server.mjs with MOCK_SHEET=1 and set SHEET_API_URL)
 import { readCanon } from '../lib/sheet.js';
-import { weeklyKimonEntries } from '../public/js/kimon-model.js';
+import { weeklyKimonEntries, liveNotes } from '../public/js/kimon-model.js';
 
 const arg = process.argv[2];
 // Weeks start on Monday, Melbourne time, to match the North Star ladder.
@@ -17,5 +17,6 @@ function mondayMelbourne(d = new Date()) {
 }
 const start = arg ? new Date(`${arg}T00:00:00+11:00`) : mondayMelbourne();
 const canon = await readCanon();
+canon.notes = liveNotes(canon.notes || []); // entries removed as mistakes don't count
 const w = weeklyKimonEntries(canon, start);
 console.log(JSON.stringify({ weekStart: start.toISOString(), count: w.count, activeDays: w.activeDays, byKind: w.byKind, measuredAt: new Date().toISOString() }));
