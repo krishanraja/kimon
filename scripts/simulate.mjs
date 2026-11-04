@@ -13,7 +13,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
-import { TAGS, noteText, symptomLevel, checkLevel, monitor, BODY_CHECK, noteData, weeklyKimonEntries } from '../public/js/kimon-model.js';
+import { TAGS, noteText, symptomLevel, checkLevel, monitor, BODY_CHECK, noteData, weeklyKimonEntries, removalNote } from '../public/js/kimon-model.js';
 import { bpSeries } from '../public/js/metrics.js';
 import { medsContext } from '../public/js/meds-model.js';
 import { bank, bankText, bankSize, factNote } from '../public/js/knowledge-bank.js';
@@ -302,6 +302,21 @@ check('Medicines: an older chat fact is labelled out of date, not trusted', () =
 check('North Star: this week counts Kimon\'s own entries and active days', () => {
   const w = weeklyKimonEntries(c2, new Date(Date.now() - 6 * 86400000));
   assert.ok(w.count > 0 && w.activeDays >= 1);
+});
+
+// ---- An entry logged by mistake is removed ----
+const oops = await kim.call('/api/write', { action: 'note', payload: { tag: TAGS.symptom, text: noteText('SYMPTOM: Swollen ankles or legs, earlier today, mild. Tapped by mistake', { symptom: 'swelling', when: 'today', severity: 'mild', level: 'soon', nid: 'sim-nid-1' }) }, opId: 'sim-op-oops' });
+const c3 = await kim.call('/api/canon');
+const oopsNote = c3.notes.find(n => noteData(n)?.nid === 'sim-nid-1');
+await kim.call('/api/write', { action: 'note', payload: removalNote(oopsNote), opId: 'sim-op-oops-rm' });
+const c4 = await kim.call('/api/canon');
+const rawNotes = (await (await fetch(`http://127.0.0.1:${PORT + 1}/__tabs`)).json()).Notes;
+check('Removing a mistaken symptom hides it from the app and Leffy, and the sheet keeps both rows', () => {
+  assert.equal(oops.ok, true); assert.ok(oopsNote);
+  assert.equal(c4.notes.some(n => noteData(n)?.nid === 'sim-nid-1'), false);
+  assert.equal(c4.notes.some(n => n.tag === 'removed'), false);
+  assert.ok(rawNotes.some(r => String(r[2]).includes('sim-nid-1') && r[3] === 'removed'));
+  assert.doesNotMatch(patientContext(c4), /Tapped by mistake/); assert.match(patientContext(c3), /Tapped by mistake/);
 });
 
 server.kill();

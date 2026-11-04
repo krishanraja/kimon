@@ -6,6 +6,7 @@ import { canRecord, startRecording, transcribeBlob, fmtTime } from './recorder.j
 import { pickPhoto, shrink } from './photo.js';
 import { fmtDate, bpSeries } from './metrics.js';
 import { triage } from './triage.js';
+import { removalNote, liveNotes, REMOVABLE } from './kimon-model.js';
 import { SYMPTOMS, WHEN, SEVERITY, BODY_CHECK, TAGS, symptomLevel, checkLevel, noteText, melbDay, pendingNudge } from './kimon-model.js';
 import { currentMeds, medLine, needsCheck, CONFIRM_TAG } from './meds-model.js';
 import { createOutbox, newOpId } from './outbox.js';
@@ -71,14 +72,25 @@ document.addEventListener('visibilitychange', async () => { if (document.visibil
 function localReading(p) {
   return { date: melbDay(p.measuredAt), test: 'Blood pressure', result: p.retract ? 'retracted' : `${p.sys}/${p.dia} mmHg`, lab: '', notes: p.supersedes ? 'Corrected' : 'Typed in on the phone', source: 'Kimon', measuredAt: p.measuredAt, id: p.id, supersedes: p.supersedes || '', local: true };
 }
+let lastNote = null; // the entry just saved, so a mistake can be removed straight away
 function addNoteLocal(tag, text) {
   const n = { tsUTC: new Date().toISOString(), by: 'Kimon', tag, text, local: true };
   ((canon ||= {}).notes ||= []).push(n); store.set('canon', canon);
+  lastNote = n;
 }
 async function note(tag, summary, data) {
-  const text = data ? noteText(summary, data) : summary;
+  // Symptom logs and body checks carry an id, so a mistake can be removed later.
+  const d = data && REMOVABLE.includes(tag) ? { ...data, nid: newOpId() } : data;
+  const text = d ? noteText(summary, d) : summary;
   addNoteLocal(tag, text);
   return send('note', { text, tag });
+}
+// Remove an entry saved by mistake: a "removed" marker; the sheet keeps both.
+async function removeNote(n) {
+  const r = removalNote(n);
+  canon.notes = liveNotes([...(canon.notes || []), { ...r, tsUTC: new Date().toISOString(), by: 'Kimon' }]);
+  store.set('canon', canon);
+  return send('note', r);
 }
 // Status of a reading by id: saved on the server, or still on this phone.
 const waitingIds = () => new Set(outbox.pending().filter(x => x.action === 'reading').map(x => x.payload.id));
@@ -147,7 +159,7 @@ function go(id) {
   ({ today: todayScreen, health: healthScreen, meds: medsScreen })[id]();
 }
 function screen(fn) { current = fn; fn(); }
-function rerender() { if (app.dataset.home === '1') current(); }
+function rerender() { if (app.dataset.tabroot === '1') current(); }
 const on = (sel, fn) => { const el = $(sel); if (el) el.onclick = fn; };
 const onAll = (sel, fn) => app.querySelectorAll(sel).forEach(el => el.onclick = () => fn(el));
 
@@ -199,7 +211,7 @@ function todayState() {
 }
 
 function todayScreen() {
-  current = todayScreen; app.dataset.home = '1';
+  current = todayScreen; app.dataset.tabroot = '1';
   const s = todayState();
   const rec = recordState();
   const r = s.latest;
@@ -266,7 +278,7 @@ function todayScreen() {
 /* ---------- blood pressure entry ---------- */
 // fix: a reading being corrected (its id goes in "supersedes").
 function bpEntry({ fix = null, at = null, sys = '', dia = '' } = {}) {
-  app.dataset.home = '';
+  app.dataset.tabroot = '';
   const opId = newOpId();
   const v = { sys: fix ? String(fix.sys) : sys, dia: fix ? String(fix.dia) : dia };
   let field = v.sys ? 'dia' : 'sys';
@@ -346,7 +358,7 @@ function pickTime(at, done) {
 }
 
 function savedScreen(p, st) {
-  app.dataset.home = '';
+  app.dataset.tabroot = '';
   const ok = st === 'saved';
   const count = readings().length;
   // A very high or low reading gets the same red-flag rules as everything else.
@@ -372,7 +384,7 @@ function savedScreen(p, st) {
 
 /* ---------- readings and corrections ---------- */
 function readingsScreen(back, page = 0) {
-  app.dataset.home = '';
+  app.dataset.tabroot = '';
   const { readings: rs, replaced } = bpSeries(canon?.testResults || []);
   const per = fits('--row', 44 + 8), start = page * per;
   const shown = rs.slice(start, start + per);
@@ -422,7 +434,7 @@ function readingDetail(r, back) {
 
 /* ---------- Health ---------- */
 function healthScreen() {
-  current = healthScreen; app.dataset.home = '1';
+  current = healthScreen; app.dataset.tabroot = '1';
   const rs = readings().filter(r => Date.now() - new Date(r.at).getTime() <= 30 * 86400000).reverse();
   let chart;
   if (recordState() === 'none') chart = '<div class="j-empty-chart">Your readings could not load right now. Anything you add is kept on this phone.</div>';
@@ -473,7 +485,7 @@ function healthScreen() {
 
 /* ---------- Medicines ---------- */
 function medsScreen(page = 0) {
-  current = () => medsScreen(page); app.dataset.home = '1';
+  current = () => medsScreen(page); app.dataset.tabroot = '1';
   const m = currentMeds(canon || {});
   const waiting = outbox.pending().some(x => x.action === 'medication');
   const rows = [...m.unconfirmed.map(x => ({ ...x, kind: 'unsure' })), ...m.current.map(x => ({ ...x, kind: 'current' }))];
@@ -615,7 +627,7 @@ function medConfirm(before, after) {
 
 /* ---------- urgent help: the existing red-flag rules ---------- */
 function unwellScreen() {
-  app.dataset.home = '';
+  app.dataset.tabroot = '';
   frame({
     eyebrow: 'I feel unwell', title: 'Get help', tabId: tab, unwell: true, back: () => go(tab),
     body: `<section class="j-card j-em" role="alert"><span class="j-ic">${ic('phone', 's20')}</span>
@@ -677,6 +689,7 @@ function logSymptom() {
 
 // What to do next, for him in Melbourne (he can dial these numbers).
 function result(level, saving = null) {
+  const entry = saving && lastNote && REMOVABLE.includes(lastNote.tag) ? lastNote : null;
   const msg = {
     emergency: ['Call 000 now', 'Ask for an ambulance. Sit or lie down and stop what you are doing. Unlock the front door. Do not drive.'],
     urgent: ['Get checked today', 'Call your GP for a same-day appointment, or the free Virtual ED video doctor. If it gets worse, call 000.'],
@@ -688,13 +701,27 @@ function result(level, saving = null) {
     : level === 'urgent' ? `<a class="j-esc" href="https://www.vved.org.au" target="_blank" rel="noopener">Virtual ED</a><a class="btn primary" data-primary href="tel:1300606024">${ic('phone', 's20')}Nurse on call</a>`
       : primary('Back to today', '', 'data-home');
   frame({
-    eyebrow: 'I feel unwell', title: 'What to do', tabId: tab, unwell: level === 'emergency' || level === 'urgent',
+    eyebrow: '', title: 'Next', tabId: tab, unwell: level === 'emergency' || level === 'urgent',
     back: () => todayScreen(),
     body: `<section class="j-card j-em ${cls}" role="${level === 'emergency' || level === 'urgent' ? 'alert' : 'status'}"><span class="j-ic">${ic(level === 'emergency' || level === 'urgent' ? 'phone' : 'check', 's20')}</span><div><h2>${esc(msg[0])}</h2><p>${esc(msg[1])}</p></div></section>
-      <p class="j-note" data-savemsg>${saving ? 'Saving…' : ''}</p>`,
+      <p class="j-note" data-savemsg>${saving ? 'Saving…' : ''}</p>
+      ${saving && entry ? '<button class="j-esc" data-undo style="align-self:flex-start">Saved by mistake? Remove it</button>' : ''}`,
     act,
   });
   on('[data-home]', () => todayScreen());
+  on('[data-undo]', () => {
+    frame({
+      title: 'Remove', tabId: tab, back: () => result(level, saving),
+      body: '<section class="j-card j-change"><span class="lbl">Remove this entry?</span><div class="by">It was saved by mistake. Your family and Leffy won\'t see it.</div></section>',
+      act: primary('Yes, remove it', '', 'data-yes'),
+    });
+    let busy = false;
+    on('[data-yes]', async () => {
+      if (busy) return; busy = true;
+      const st = await removeNote(entry);
+      todayScreen(); toast(st === 'saved' ? 'Removed.' : 'Removed. Waiting to send.');
+    });
+  });
   if (saving) saving.then(st => { const el = $('[data-savemsg]'); if (el) el.textContent = st === 'saved' ? 'Saved. Your family can see it.' : st === 'unsafe' ? 'Not saved. Tell your family directly.' : "Kept on this phone. Your family can't see it until it sends."; });
 }
 
@@ -724,7 +751,7 @@ function bodyCheck() {
 // One tap sends a ready message; or speak and send what he said. No typing.
 const TALK_CHIPS = ['All good today', 'Went for my walk', 'A bit tired today', 'Call me when you can', 'Thinking of you', 'Saw the doctor today'];
 function talk() {
-  app.dataset.home = '';
+  app.dataset.tabroot = '';
   const n = canon ? pendingNudge(canon) : null;
   if (n) note(TAGS.seen, 'Seen the nudge ♥');
   const from = n ? (/^(app|)$/i.test(n.from) ? 'Family' : n.from) : '';
@@ -879,6 +906,6 @@ if (window.visualViewport) {
   await flush(); await load();
   if (!canon) canon = { notes: [], profile: {} };
   // Refresh, but never pull him out of something he's doing.
-  if (app.dataset.home === '1' || app.querySelector('.j-loading')) current();
+  if (app.dataset.tabroot === '1' || app.querySelector('.j-loading')) current();
 })();
 

@@ -4,6 +4,7 @@
 import { triage } from './triage.js';
 
 export const TAGS = {
+  removed: 'removed',
   symptom: 'symptom-log', check: 'body-check', habit: 'habit', meds: 'meds-taken',
   talk: 'kimon-says', nudge: 'nudge', seen: 'nudge-seen',
 };
@@ -136,4 +137,27 @@ export function weeklyKimonEntries(canon = {}, weekStart = new Date(Date.now() -
   }
   for (const c of canon.changelog || []) if (c.by === 'Kimon' && c.tab === 'Medications' && inWeek(c.ts)) items.push({ kind: 'medicine', ts: c.ts });
   return { count: items.length, activeDays: new Set(items.map(i => melbDay(i.ts))).size, byKind: items.reduce((o, i) => ((o[i.kind] = (o[i.kind] || 0) + 1), o), {}) };
+}
+
+// Removing a mistaken entry: the sheet stays append-only. A "removed" note
+// points at the entry's timestamp and tag; liveNotes() hides both. Only
+// symptom logs and body checks can be removed this way.
+export const REMOVABLE = ['symptom-log', 'body-check'];
+export function removalNote(n) {
+  const nid = n.nid || noteData(n)?.nid;
+  return { tag: 'removed', text: noteText('REMOVED: entered by mistake', { tag: n.tag, ...(nid ? { nid } : { removes: n.tsUTC }) }) };
+}
+export function liveNotes(notes = []) {
+  const gone = new Set();
+  for (const n of notes) {
+    if (n.tag !== 'removed') continue;
+    const d = noteData(n);
+    if (d && REMOVABLE.includes(d.tag)) gone.add(d.nid ? `id|${d.nid}` : `${d.tag}|${d.removes}`);
+  }
+  return notes.filter(n => {
+    if (n.tag === 'removed') return false;
+    if (!REMOVABLE.includes(n.tag)) return true;
+    const nid = noteData(n)?.nid;
+    return !gone.has(`${n.tag}|${n.tsUTC}`) && !(nid && gone.has(`id|${nid}`));
+  });
 }
