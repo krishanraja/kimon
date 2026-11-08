@@ -1,6 +1,6 @@
 # 2026-11-08: Usage audit, what Kimon enters now reaches every screen
 
-**Status:** built, tested and pushed to `claude/usage-audit-data-population-dng1wg`. Not merged, not deployed. Everything here ships with a normal Vercel deploy; no Apps Script redeploy is needed.
+**Status:** merged to main in krishanraja/kimon#12 and live in production (Vercel build of `cd1c808` is READY; `quick-checks.js` serves from www.laurenthermos.com). No Apps Script redeploy is needed.
 
 **What the live sheet showed (read-only audit, 8 November)**
 - Kimon has saved a blood pressure reading every day from 4 to 8 November, all through the app, all attributed to him by the server. Once-only saving works: no duplicate rows.
