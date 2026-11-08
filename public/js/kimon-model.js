@@ -2,6 +2,7 @@
 // logs are Notes (append-only, tagged, with a JSON DATA line); the care plan
 // is one Profile value. Pure functions, no DOM; unit tested.
 import { triage } from './triage.js';
+import { bpInsight } from './metrics.js';
 
 export const TAGS = {
   removed: 'removed',
@@ -69,6 +70,19 @@ export function noteData(n) {
 }
 export function noteSummary(n) { return String(n.text || '').split('\nDATA: ')[0].split('\nRID: ')[0]; }
 
+// Days he takes tablets: the day a tick was saved, plus any earlier days he
+// confirmed afterwards (DATA.days). Used by every tablets count.
+export function tabletDays(notes = [], by = null) {
+  const out = new Set();
+  for (const n of notes) {
+    if (n.tag !== TAGS.meds || (by && n.by !== by)) continue;
+    const d = noteData(n);
+    if (Array.isArray(d?.days) && d.days.length) d.days.forEach(x => out.add(String(x)));
+    else out.add(melbDay(n.tsUTC));
+  }
+  return out;
+}
+
 // Urgency for a symptom log: the shared red-flag rules plus the structured fields.
 export function symptomLevel(log) {
   const s = SYMPTOMS.find(x => x.id === log.symptom);
@@ -101,12 +115,21 @@ export function monitor(canon, now = new Date()) {
   const checks = notes.filter(n => n.tag === TAGS.check).map(n => ({ ts: n.tsUTC, ...noteData(n), summary: noteSummary(n) }));
   const lastCheck = checks.pop() || null;
   const habitDays = new Set(recent.filter(n => n.tag === TAGS.habit && noteData(n)?.done).map(n => melbDay(n.tsUTC)));
-  const medsDays = new Set(recent.filter(n => n.tag === TAGS.meds).map(n => melbDay(n.tsUTC)));
-  const said = recent.filter(n => n.tag === TAGS.talk).map(n => ({ ts: n.tsUTC, text: noteSummary(n).replace(/^KIMON SAYS:\s*/i, '') }));
+  const weekDays = new Set([...Array(7)].map((_, i) => melbDay(now.getTime() - i * 86400000)));
+  const medsDays = new Set([...tabletDays(notes)].filter(d => weekDays.has(d)));
+  // What he said, and his one-tap answers to quick questions.
+  const said = recent.filter(n => n.tag === TAGS.talk || n.tag === 'quick-check').map(n => ({ ts: n.tsUTC, text: noteSummary(n).replace(/^(KIMON SAYS|QUICK CHECK):\s*/i, '') }));
   const alerts = [...logs.filter(l => LEVEL_RANK[l.level] >= 2).map(l => ({ ts: l.ts, level: l.level, text: l.summary }))];
   if (lastCheck && new Date(lastCheck.ts).getTime() >= weekAgo && LEVEL_RANK[lastCheck.level] >= 2) alerts.push({ ts: lastCheck.ts, level: lastCheck.level, text: lastCheck.summary });
-  const lastSeen = notes.filter(n => n.by === 'Kimon').map(n => n.tsUTC).sort().pop() || '';
+  // Last time he added anything: notes, readings, check-ins or list changes.
+  const lastSeen = [
+    ...notes.filter(n => n.by === 'Kimon').map(n => n.tsUTC),
+    ...(canon.testResults || []).filter(r => r.source === 'Kimon' && r.measuredAt).map(r => new Date(r.measuredAt).toISOString()),
+    ...(canon.checkins || []).filter(c => c.by === 'Kimon').map(c => c.tsUTC),
+    ...(canon.changelog || []).filter(c => c.by === 'Kimon').map(c => c.ts),
+  ].filter(Boolean).sort().pop() || '';
   return {
+    bp: bpInsight(canon, now),
     alerts: alerts.sort((a, b) => String(b.ts).localeCompare(String(a.ts))),
     logs: logs.reverse(), lastCheck, checkDue: !lastCheck || new Date(lastCheck.ts).getTime() < weekAgo,
     habitDays: habitDays.size, medsDays: medsDays.size, said: said.reverse(), lastSeen,
@@ -135,7 +158,16 @@ export function weeklyKimonEntries(canon = {}, weekStart = new Date(Date.now() -
     const ts = r.measuredAt || r.date;
     if (r.source === 'Kimon' && inWeek(ts)) items.push({ kind: r.result === 'retracted' ? 'reading-retracted' : 'result', ts });
   }
-  for (const c of canon.changelog || []) if (c.by === 'Kimon' && c.tab === 'Medications' && inWeek(c.ts)) items.push({ kind: 'medicine', ts: c.ts });
+  // Anything else he changed himself: medicines, answers, gaps, his profile.
+  // One save can log two rows (a status and an answer): count it once.
+  const seen = new Set();
+  for (const c of canon.changelog || []) {
+    if (c.by !== 'Kimon' || !inWeek(c.ts)) continue;
+    const k = `${c.tab}|${String(c.key).split('.')[0]}|${String(c.ts).slice(0, 16)}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    items.push({ kind: c.tab === 'Medications' ? 'medicine' : 'record:' + c.tab, ts: c.ts });
+  }
   return { count: items.length, activeDays: new Set(items.map(i => melbDay(i.ts))).size, byKind: items.reduce((o, i) => ((o[i.kind] = (o[i.kind] || 0) + 1), o), {}) };
 }
 

@@ -4,6 +4,7 @@
 // so the list, the family app and Leffy always agree. Product facts only
 // (no advice). Anything missing is added here, not typed in on a phone.
 export const MED_CATALOG = [
+  ['Allopurinol', ['100 mg', '300 mg']],
   ['Amlodipine', ['2.5 mg', '5 mg', '10 mg']],
   ['Apixaban', ['2.5 mg', '5 mg']],
   ['Aspirin (low dose)', ['100 mg']],
@@ -11,6 +12,7 @@ export const MED_CATALOG = [
   ['Bisoprolol', ['1.25 mg', '2.5 mg', '5 mg', '10 mg']],
   ['Candesartan', ['4 mg', '8 mg', '16 mg', '32 mg']],
   ['Clopidogrel', ['75 mg']],
+  ['Colchicine', ['500 mcg']],
   ['Ezetimibe', ['10 mg']],
   ['Frusemide (furosemide)', ['20 mg', '40 mg']],
   ['Glyceryl trinitrate spray', ['400 mcg per spray']],
@@ -21,14 +23,16 @@ export const MED_CATALOG = [
   ['Pantoprazole', ['20 mg', '40 mg']],
   ['Perindopril', ['2.5 mg', '5 mg', '10 mg']],
   ['Pravastatin', ['10 mg', '20 mg', '40 mg', '80 mg']],
+  ['Prednisolone', ['1 mg', '5 mg', '25 mg']],
   ['Ramipril', ['1.25 mg', '2.5 mg', '5 mg', '10 mg']],
   ['Rivaroxaban', ['10 mg', '15 mg', '20 mg']],
   ['Rosuvastatin', ['5 mg', '10 mg', '20 mg', '40 mg']],
   ['Simvastatin', ['10 mg', '20 mg', '40 mg', '80 mg']],
   ['Spironolactone', ['25 mg', '50 mg', '100 mg']],
   ['Telmisartan', ['40 mg', '80 mg']],
+  ['Vitamin D (colecalciferol)', ['1000 IU']],
 ];
-export const MED_WHEN = ['Morning', 'Midday', 'Evening', 'Night', 'Morning and evening', 'When needed'];
+export const MED_WHEN = ['Morning', 'Midday', 'Evening', 'Night', 'Morning and evening', 'When needed', 'Short course', 'Before a test or procedure'];
 export const NOT_SURE = 'Not sure';
 
 export const strengthsOf = name => (MED_CATALOG.find(([n]) => n === name) || [, []])[1];

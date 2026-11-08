@@ -74,6 +74,55 @@ export function bpSeries(testResults = []) {
   return { readings: live.sort(order), replaced: replaced.sort(order), retracted: all.filter(r => r.result === 'retracted').length };
 }
 
+// What his readings add up to, for every reader: the family, Kimon and
+// Leffy. Facts only: counts, averages, ranges, and how the
+// readings since his last medicine change compare. No zones, no verdicts.
+// A medicine change is a status change in the change log (stopped, or
+// started again), never the day the list was first typed in.
+const melb = ts => { const d = new Date(ts); return isNaN(d) ? '' : d.toLocaleDateString('en-CA', { timeZone: 'Australia/Melbourne' }); };
+const avgOf = (rs, k) => Math.round(rs.reduce((a, r) => a + r[k], 0) / rs.length);
+const summary = rs => rs.length ? {
+  n: rs.length, sys: avgOf(rs, 'sys'), dia: avgOf(rs, 'dia'),
+  sysLo: Math.min(...rs.map(r => r.sys)), sysHi: Math.max(...rs.map(r => r.sys)),
+  diaLo: Math.min(...rs.map(r => r.dia)), diaHi: Math.max(...rs.map(r => r.dia)),
+} : null;
+export function bpInsight(canon = {}, now = new Date()) {
+  const rs = bpSeries(canon.testResults || []).readings; // newest first
+  if (!rs.length) return null;
+  const t = now.getTime(), DAY = 86400000;
+  const last7 = rs.filter(r => t - new Date(r.at).getTime() <= 7 * DAY);
+  const days = new Set(rs.map(r => melb(r.at)));
+  // Days in a row with a reading, ending today (or yesterday, so the streak
+  // still shows in the morning before today's reading).
+  let streak = 0;
+  for (let i = days.has(melb(now)) ? 0 : 1; days.has(melb(t - i * DAY)); i++) streak++;
+  const change = (canon.changelog || [])
+    .filter(c => c.tab === 'Medications' && /\.status$/.test(c.key) && (c.new === 'stopped' || (c.new === 'current' && c.old === 'stopped')))
+    .sort((a, b) => String(a.ts).localeCompare(String(b.ts))).pop();
+  let sinceChange = null;
+  if (change) {
+    const at = new Date(change.ts).getTime();
+    const after = rs.filter(r => new Date(r.at).getTime() > at), before = rs.filter(r => new Date(r.at).getTime() <= at);
+    if (after.length) sinceChange = { name: String(change.key).replace(/\.status$/, ''), what: change.new === 'stopped' ? 'stopped' : 'restarted', day: melb(change.ts), after: summary(after), before: before.length >= 2 ? summary(before) : null };
+  }
+  return {
+    latest: rs[0], count: rs.length, since: rs[rs.length - 1].at,
+    week: summary(last7), daysThisWeek: new Set(last7.map(r => melb(r.at))).size,
+    streak, readToday: days.has(melb(now)), sinceChange,
+  };
+}
+
+// One plain line each, shared by every screen and by Leffy.
+export function bpLines(b) {
+  if (!b) return [];
+  const L = [];
+  if (b.week) L.push(`Last 7 days: ${b.week.n} reading${b.week.n === 1 ? '' : 's'} on ${b.daysThisWeek} day${b.daysThisWeek === 1 ? '' : 's'}, average ${b.week.sys}/${b.week.dia} mmHg (top number ${b.week.sysLo === b.week.sysHi ? b.week.sysLo : `${b.week.sysLo} to ${b.week.sysHi}`})`);
+  if (b.streak >= 2) L.push(`${b.streak} days in a row with a reading`);
+  const c = b.sinceChange;
+  if (c) L.push(`Since ${c.name} was ${c.what} on ${fmtDate(c.day)}: ${c.after.n} reading${c.after.n === 1 ? '' : 's'}, average ${c.after.sys}/${c.after.dia} mmHg${c.before ? ` (before: ${c.before.n} readings, average ${c.before.sys}/${c.before.dia})` : ''}`);
+  return L;
+}
+
 // Latest value per measure across all rows. Each value keeps its row date.
 export function extract(testResults = []) {
   const rows = liveResults(testResults).sort((a, b) => dateKey(a.date) - dateKey(b.date) || String(a.measuredAt || '').localeCompare(String(b.measuredAt || '')));

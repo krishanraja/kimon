@@ -4,12 +4,13 @@
 // thing of him: one primary button, just above the tabs.
 import { canRecord, startRecording, transcribeBlob, fmtTime } from './recorder.js';
 import { pickPhoto, shrink } from './photo.js';
-import { fmtDate, bpSeries } from './metrics.js';
+import { fmtDate, bpSeries, bpInsight, daysUntil } from './metrics.js';
 import { triage } from './triage.js';
 import { removalNote, liveNotes, REMOVABLE } from './kimon-model.js';
-import { SYMPTOMS, WHEN, SEVERITY, BODY_CHECK, TAGS, symptomLevel, checkLevel, noteText, melbDay, pendingNudge } from './kimon-model.js';
-import { currentMeds, medLine, needsCheck, CONFIRM_TAG } from './meds-model.js';
+import { SYMPTOMS, WHEN, SEVERITY, BODY_CHECK, TAGS, symptomLevel, checkLevel, noteText, melbDay, pendingNudge, tabletDays } from './kimon-model.js';
+import { currentMeds, medLine, needsCheck, CONFIRM_TAG, MED_CHECK_TAG } from './meds-model.js';
 import { createOutbox, newOpId } from './outbox.js';
+import { quickChecks, quickNote } from './quick-checks.js';
 import { MED_CATALOG, MED_WHEN, NOT_SURE, strengthsOf, inCatalog } from './med-catalog.js';
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -179,7 +180,7 @@ function fits(rowVar, other) {
 
 /* ---------- Today ---------- */
 function readings() { return bpSeries((canon?.testResults) || []).readings; }
-function tabletsDays() { return new Set((canon?.notes || []).filter(n => n.tag === TAGS.meds && n.by === 'Kimon').map(n => melbDay(n.tsUTC))); }
+function tabletsDays() { return tabletDays(canon?.notes || [], 'Kimon'); }
 
 function weekStrip() {
   const rs = readings(), tabs = tabletsDays(), hasMeds = !currentMeds(canon || {}).empty;
@@ -246,6 +247,8 @@ function todayScreen() {
   if (s.waiting.length) act = primary(`Send ${s.waiting.length === 1 ? 'it' : 'them'} now`, 'send', 'data-flush');
   else if (!r) act = primary("Add today's reading", 'plus', 'data-add');
   else if (!s.meds.empty && !s.took) act = primary("I took today's tablets", 'check', 'data-took');
+  // Today's things done: a few one-tap questions, if any, and not skipped today.
+  else if (quickDue().length) act = primary(quickDue().length === 1 ? 'One quick question' : `${quickDue().length} quick questions`, 'q', 'data-quick');
   else act = primary('Add another reading', 'plus', 'data-add');
 
   const d = new Date();
@@ -264,20 +267,24 @@ function todayScreen() {
     act,
   });
   on('[data-add]', () => bpEntry());
+  on('[data-quick]', () => quickFlow());
   on('[data-readings]', () => readingsScreen(() => todayScreen()));
-  on('[data-meds]', () => medsScreen());
+  const tick = async b => {
+    if (b) b.disabled = true;
+    const st = await note(TAGS.meds, 'MEDS: taken', { meds: s.meds.current.map(m => m.name) });
+    todayScreen();
+    toast(st === 'saved' ? 'Ticked. Saved.' : st === 'unsafe' ? 'Not saved. Keep the app open and try again.' : 'Ticked. Waiting to send.');
+  };
+  // While today's tablets are still to do, the row ticks them, the same as
+  // the button. Once ticked, it opens the list.
+  on('[data-meds]', () => (rec !== 'none' && s.meds.current.length && !s.took ? tick($('[data-meds]')) : medsScreen()));
   on('[data-talk]', () => talk());
   on('[data-flush]', async () => {
     const b = $('[data-flush]'); b.disabled = true; b.lastChild.textContent = 'Sending…';
     const res = await flush(); await load(); todayScreen();
     if (res.left) toast('Still offline. It stays on this phone and sends by itself.');
   });
-  on('[data-took]', async () => {
-    const b = $('[data-took]'); b.disabled = true;
-    const st = await note(TAGS.meds, 'MEDS: taken', { meds: s.meds.current.map(m => m.name) });
-    todayScreen();
-    toast(st === 'saved' ? 'Ticked. Saved.' : st === 'unsafe' ? 'Not saved. Keep the app open and try again.' : 'Ticked. Waiting to send.');
-  });
+  on('[data-took]', () => tick($('[data-took]')));
 }
 
 /* ---------- blood pressure entry ---------- */
@@ -365,10 +372,14 @@ function pickTime(at, done) {
 function savedScreen(p, st) {
   app.dataset.tabroot = '';
   const ok = st === 'saved';
-  const count = readings().length;
+  const b = bpInsight(canon || {});
+  const appt = canon?.profile?.next_appointment, inDays = appt ? daysUntil(appt) : null;
+  const sofar = !b ? '' : b.streak >= 2 ? `${b.streak} days in a row. ` : `${b.count} reading${b.count === 1 ? '' : 's'} so far. `;
+  const avg = b?.week && b.week.n >= 3 ? `Your 7-day average is ${b.week.sys}/${b.week.dia}. ` : '';
+  const next = inDays !== null && inDays >= 0 && inDays <= 14 ? (inDays === 0 ? 'Your appointment is today.' : `Your appointment is in ${inDays} day${inDays === 1 ? '' : 's'}.`) : '';
   // A very high or low reading gets the same red-flag rules as everything else.
   const level = triage(`BP ${p.sys}/${p.dia}`).level;
-  const msg = ok ? `Your family and Leffy can see it now. ${count} reading${count === 1 ? '' : 's'} so far.`
+  const msg = ok ? `Saved for your family and Leffy. ${sofar}${avg}${next}`.trim()
     : st === 'auth' ? 'Kept on this phone. Log in again and it sends by itself.'
       : st === 'unsafe' ? 'Not saved, and this phone could not keep a copy. Keep the app open and tap Try again.'
         : "Kept on this phone. It sends by itself as soon as it can. Your family can't see it yet.";
@@ -615,6 +626,13 @@ function medConfirm(before, after) {
   let busy = false;
   on('[data-save]', async () => {
     if (busy) return; busy = true;
+    // Nothing changed: record that he checked it, rather than an update the
+    // sheet would ignore and nobody could see.
+    if (before && before.name === after.name && (before.status || 'current') === after.status && (before.dose || '') === (after.dose || '') && (before.when || '') === (after.when || '')) {
+      const st = await note(MED_CHECK_TAG, `MED: still ${after.status === 'stopped' ? 'stopped' : 'taking'} ${after.name}`, { name: after.name, status: after.status });
+      medsScreen();
+      return toast(st === 'saved' ? `Thanks. Noted, no change to ${after.name}.` : 'Noted here. Waiting to send.');
+    }
     const p = { name: after.name, dose: after.dose || '', frequency: after.when || '', status: after.status, ...(before && before.from !== 'family-list' && before.name !== after.name ? { previousName: before.name } : {}), ...(before && before.name === after.name ? { existing: true } : {}) };
     // Show it straight away; the server's copy replaces this on the next load.
     const list = ((canon ||= {}).medications ||= []);
@@ -627,6 +645,53 @@ function medConfirm(before, after) {
     if (st === 'rejected') return toast("That didn't save. Try again.");
     medsScreen();
     toast(st === 'saved' ? 'Saved. Your family and Leffy see the new list.' : 'Changed here. Waiting to send.');
+  });
+}
+
+/* ---------- quick questions: one tap each ---------- */
+// Loose ends in his record only he can settle (quick-checks.js). One per
+// screen; a tap saves it and moves on. "Skip for now" hides them until tomorrow.
+function quickDue() {
+  if (recordState() === 'none' || store.get('quickSkip', '') === today()) return [];
+  return quickChecks(canon || {});
+}
+function applyLocal(action, p) {
+  canon ||= {};
+  if (action === 'medication') {
+    const list = (canon.medications ||= []);
+    const row = list.find(r => r.name === p.name);
+    if (row) Object.assign(row, { frequency: p.frequency, status: p.status, updated: today() });
+    else list.push({ name: p.name, dose: p.dose || '', frequency: p.frequency || '', status: p.status, source: 'app', updated: today() });
+  }
+  if (action === 'gap') { const g = (canon.gaps || []).find(x => x.id === p.id); if (g) g.status = p.status; }
+  if (action === 'question') { const q = (canon.questions || []).find(x => x.id === p.id); if (q) Object.assign(q, { status: p.status, answer: p.answer }); }
+  store.set('canon', canon);
+}
+function quickFlow(asked = 0) {
+  app.dataset.tabroot = '';
+  const list = quickChecks(canon || {});
+  if (!list.length) { todayScreen(); return asked ? toast('Thanks. Your family and Leffy can see your answers.') : null; }
+  const c = list[0];
+  frame({
+    eyebrow: list.length === 1 ? 'Last quick question' : `Quick question · ${list.length} left`, title: c.title, tabId: 'today',
+    body: `<p class="j-q">${esc(c.q)}</p><div class="j-opts">${c.opts.map(o => `<button class="j-opt" data-o="${esc(o.k)}"><span class="j-dot"></span>${esc(o.label)}</button>`).join('')}</div>`,
+    act: link('Skip for now', 'data-skip'),
+  });
+  on('[data-skip]', () => { store.set('quickSkip', today()); todayScreen(); });
+  let busy = false;
+  onAll('[data-o]', async b => {
+    if (busy) return; busy = true;
+    b.setAttribute('aria-checked', 'true');
+    const o = c.opts.find(x => x.k === b.dataset.o);
+    for (const w of o.writes) {
+      if (w.note) { await note(w.note.tag, w.note.summary, w.note.data); continue; }
+      applyLocal(w.action, w.payload);
+      const st = await send(w.action, w.payload);
+      if (st === 'rejected') { busy = false; return toast("That didn't save. Try again."); }
+    }
+    const n = quickNote(c, o);
+    await note(n.tag, n.summary, n.data);
+    quickFlow(asked + 1);
   });
 }
 
