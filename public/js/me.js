@@ -4,11 +4,11 @@
 // thing of him: one primary button, just above the tabs.
 import { canRecord, startRecording, transcribeBlob, fmtTime } from './recorder.js';
 import { pickPhoto, shrink } from './photo.js';
-import { fmtDate, bpSeries } from './metrics.js';
+import { fmtDate, bpSeries, bpInsight, daysUntil } from './metrics.js';
 import { triage } from './triage.js';
 import { removalNote, liveNotes, REMOVABLE } from './kimon-model.js';
 import { SYMPTOMS, WHEN, SEVERITY, BODY_CHECK, TAGS, symptomLevel, checkLevel, noteText, melbDay, pendingNudge } from './kimon-model.js';
-import { currentMeds, medLine, needsCheck, CONFIRM_TAG } from './meds-model.js';
+import { currentMeds, medLine, needsCheck, CONFIRM_TAG, MED_CHECK_TAG } from './meds-model.js';
 import { createOutbox, newOpId } from './outbox.js';
 import { MED_CATALOG, MED_WHEN, NOT_SURE, strengthsOf, inCatalog } from './med-catalog.js';
 
@@ -265,19 +265,22 @@ function todayScreen() {
   });
   on('[data-add]', () => bpEntry());
   on('[data-readings]', () => readingsScreen(() => todayScreen()));
-  on('[data-meds]', () => medsScreen());
+  const tick = async b => {
+    if (b) b.disabled = true;
+    const st = await note(TAGS.meds, 'MEDS: taken', { meds: s.meds.current.map(m => m.name) });
+    todayScreen();
+    toast(st === 'saved' ? 'Ticked. Saved.' : st === 'unsafe' ? 'Not saved. Keep the app open and try again.' : 'Ticked. Waiting to send.');
+  };
+  // While today's tablets are still to do, the row ticks them, the same as
+  // the button. Once ticked, it opens the list.
+  on('[data-meds]', () => (rec !== 'none' && s.meds.current.length && !s.took ? tick($('[data-meds]')) : medsScreen()));
   on('[data-talk]', () => talk());
   on('[data-flush]', async () => {
     const b = $('[data-flush]'); b.disabled = true; b.lastChild.textContent = 'Sending…';
     const res = await flush(); await load(); todayScreen();
     if (res.left) toast('Still offline. It stays on this phone and sends by itself.');
   });
-  on('[data-took]', async () => {
-    const b = $('[data-took]'); b.disabled = true;
-    const st = await note(TAGS.meds, 'MEDS: taken', { meds: s.meds.current.map(m => m.name) });
-    todayScreen();
-    toast(st === 'saved' ? 'Ticked. Saved.' : st === 'unsafe' ? 'Not saved. Keep the app open and try again.' : 'Ticked. Waiting to send.');
-  });
+  on('[data-took]', () => tick($('[data-took]')));
 }
 
 /* ---------- blood pressure entry ---------- */
@@ -365,10 +368,14 @@ function pickTime(at, done) {
 function savedScreen(p, st) {
   app.dataset.tabroot = '';
   const ok = st === 'saved';
-  const count = readings().length;
+  const b = bpInsight(canon || {});
+  const appt = canon?.profile?.next_appointment, inDays = appt ? daysUntil(appt) : null;
+  const sofar = !b ? '' : b.streak >= 2 ? `${b.streak} days in a row. ` : `${b.count} reading${b.count === 1 ? '' : 's'} so far. `;
+  const avg = b?.week && b.week.n >= 3 ? `Your 7-day average is ${b.week.sys}/${b.week.dia}. ` : '';
+  const next = inDays !== null && inDays >= 0 && inDays <= 14 ? (inDays === 0 ? 'Your appointment is today.' : `Your appointment is in ${inDays} day${inDays === 1 ? '' : 's'}.`) : '';
   // A very high or low reading gets the same red-flag rules as everything else.
   const level = triage(`BP ${p.sys}/${p.dia}`).level;
-  const msg = ok ? `Your family and Leffy can see it now. ${count} reading${count === 1 ? '' : 's'} so far.`
+  const msg = ok ? `Saved for your family and Leffy. ${sofar}${avg}${next}`.trim()
     : st === 'auth' ? 'Kept on this phone. Log in again and it sends by itself.'
       : st === 'unsafe' ? 'Not saved, and this phone could not keep a copy. Keep the app open and tap Try again.'
         : "Kept on this phone. It sends by itself as soon as it can. Your family can't see it yet.";
@@ -615,6 +622,13 @@ function medConfirm(before, after) {
   let busy = false;
   on('[data-save]', async () => {
     if (busy) return; busy = true;
+    // Nothing changed: record that he checked it, rather than an update the
+    // sheet would ignore and nobody could see.
+    if (before && before.name === after.name && (before.status || 'current') === after.status && (before.dose || '') === (after.dose || '') && (before.when || '') === (after.when || '')) {
+      const st = await note(MED_CHECK_TAG, `MED: still ${after.status === 'stopped' ? 'stopped' : 'taking'} ${after.name}`, { name: after.name, status: after.status });
+      medsScreen();
+      return toast(st === 'saved' ? `Thanks. Noted, no change to ${after.name}.` : 'Noted here. Waiting to send.');
+    }
     const p = { name: after.name, dose: after.dose || '', frequency: after.when || '', status: after.status, ...(before && before.from !== 'family-list' && before.name !== after.name ? { previousName: before.name } : {}), ...(before && before.name === after.name ? { existing: true } : {}) };
     // Show it straight away; the server's copy replaces this on the next load.
     const list = ((canon ||= {}).medications ||= []);

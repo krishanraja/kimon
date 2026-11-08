@@ -8,6 +8,8 @@ import { parseDate } from './metrics.js';
 
 export const MED_STATUS = { current: 'current', stopped: 'stopped', unconfirmed: 'unconfirmed', removed: 'removed', superseded: 'superseded' };
 export const CONFIRM_TAG = 'meds-confirmed';
+// One medicine checked and found unchanged. It never stands in for "took today's dose".
+export const MED_CHECK_TAG = 'med-checked';
 
 const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 // First word of a medicine name, e.g. "Medicine A 10 mg" -> "medicine".

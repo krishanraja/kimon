@@ -22,21 +22,24 @@ Beside: a phone-first app that helps a family support their father through a car
 
 One family. It shows what an evidence-first companion app looks like when the stakes are personal.
 
-## Where it is right now (as of 2026-10-23)
+## Where it is right now (as of 2026-11-08)
 
-<!-- north-star-state {"week_of": "2026-10-26", "week_target": 1, "current": null, "current_as_of": null, "current_source": null, "urgency": 4, "urgency_reason": "not measured yet"} --> **North Star number: U4, far behind.** Times a week Kimon adds something to Beside himself: not measured yet, against 1 this week, on the way to 4 by 28 December 2026. A bold swing every day; work that does not move the number waits.
+<!-- north-star-state {"week_of": "2026-11-02", "week_target": 1, "current": 44, "current_as_of": "2026-11-08", "current_source": "Live sheet rows attributed to Kimon by the server, counted with weeklyKimonEntries", "urgency": 1, "urgency_reason": "at or above this week's target"} --> **North Star number: U1, on pace.** 44 of 1, U1, ahead by 43. Times a week Kimon adds something to Beside himself: 44 entries on 5 separate days in the week of 2 November, including a blood pressure reading every day from 4 to 8 November. Next week's target is 2. One proposal a week that would raise the ceiling.
 
 Lifecycle: live. The detail is in `README.md`.
 
 ## What changed recently
 
-- 2026-11-03 **Kimon's app rebuilt around one repeat action: typed-in blood pressure, one medicines list, once-only saving.** In production; waiting on the Apps Script redeploy before readings save to the sheet. See `now-notes/2026-11-03-beside-patient-app.md`.
+- 2026-11-08 **Usage audit: what Kimon enters now reaches the family, Leffy and his own screens.** He was re-saving each medicine unchanged every day instead of ticking his tablets, which recorded nothing; the tablets row now ticks them, and an unchanged medicine is logged as checked. The family tab shows his readings, his 7-day average, his streak and how readings compare since his last medicine change. See `now-notes/2026-11-08-usage-audit.md`.
+
+- 2026-11-03 **Kimon's app rebuilt around one repeat action: typed-in blood pressure, one medicines list, once-only saving.** In production. The Apps Script redeploy is done: readings have saved to the sheet since 4 November. See `now-notes/2026-11-03-beside-patient-app.md`.
 
 - 2026-10-23 **The North Star now has a number, a weekly ladder and an urgency rating.** Ruling (Krish, 2026-10-23): every repository chases one aggressive number on a weekly ladder, and urgency U1 to U5 sets how hard it pushes. The number is in `docs/NORTH_STAR.md`; contract: ai-harness `contract/north-star-metric.md`.
 
 ## What is next and what is waiting on Krish
 
-- Measure the North Star number and record it on the first line under "Where it is right now".
+- Krish to review four entries in the live sheet that only he or Kimon can settle (listed in `now-notes/2026-11-08-usage-audit.md`).
+- Measure the North Star number again on Monday 16 November (target 2).
 - North Star check (2026-10-23): holds.
 
 ## Read next

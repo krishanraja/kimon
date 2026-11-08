@@ -99,4 +99,5 @@ function seedTabs(tabs, c) {
   put('Questions', (c.questions || []).map(x => [x.id, x.question, x.askWhom, x.priority, x.status, x.answer, x.updated]));
   put('KnowledgeGaps', (c.gaps || []).map(x => [x.id, x.gap, x.whatAnswersIt, x.stepToClose, x.status, x.updated]));
   put('Notes', (c.notes || []).map(x => [x.tsUTC, x.by, x.text, x.tag]));
+  put('Changelog', (c.changelog || []).map(x => [x.ts, x.tab, x.key, x.old, x.new, x.by, x.source || 'app']));
 }

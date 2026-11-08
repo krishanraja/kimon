@@ -2,6 +2,7 @@
 // logs are Notes (append-only, tagged, with a JSON DATA line); the care plan
 // is one Profile value. Pure functions, no DOM; unit tested.
 import { triage } from './triage.js';
+import { bpInsight } from './metrics.js';
 
 export const TAGS = {
   removed: 'removed',
@@ -105,8 +106,15 @@ export function monitor(canon, now = new Date()) {
   const said = recent.filter(n => n.tag === TAGS.talk).map(n => ({ ts: n.tsUTC, text: noteSummary(n).replace(/^KIMON SAYS:\s*/i, '') }));
   const alerts = [...logs.filter(l => LEVEL_RANK[l.level] >= 2).map(l => ({ ts: l.ts, level: l.level, text: l.summary }))];
   if (lastCheck && new Date(lastCheck.ts).getTime() >= weekAgo && LEVEL_RANK[lastCheck.level] >= 2) alerts.push({ ts: lastCheck.ts, level: lastCheck.level, text: lastCheck.summary });
-  const lastSeen = notes.filter(n => n.by === 'Kimon').map(n => n.tsUTC).sort().pop() || '';
+  // Last time he added anything: notes, readings, check-ins or list changes.
+  const lastSeen = [
+    ...notes.filter(n => n.by === 'Kimon').map(n => n.tsUTC),
+    ...(canon.testResults || []).filter(r => r.source === 'Kimon' && r.measuredAt).map(r => new Date(r.measuredAt).toISOString()),
+    ...(canon.checkins || []).filter(c => c.by === 'Kimon').map(c => c.tsUTC),
+    ...(canon.changelog || []).filter(c => c.by === 'Kimon').map(c => c.ts),
+  ].filter(Boolean).sort().pop() || '';
   return {
+    bp: bpInsight(canon, now),
     alerts: alerts.sort((a, b) => String(b.ts).localeCompare(String(a.ts))),
     logs: logs.reverse(), lastCheck, checkDue: !lastCheck || new Date(lastCheck.ts).getTime() < weekAgo,
     habitDays: habitDays.size, medsDays: medsDays.size, said: said.reverse(), lastSeen,
@@ -135,7 +143,16 @@ export function weeklyKimonEntries(canon = {}, weekStart = new Date(Date.now() -
     const ts = r.measuredAt || r.date;
     if (r.source === 'Kimon' && inWeek(ts)) items.push({ kind: r.result === 'retracted' ? 'reading-retracted' : 'result', ts });
   }
-  for (const c of canon.changelog || []) if (c.by === 'Kimon' && c.tab === 'Medications' && inWeek(c.ts)) items.push({ kind: 'medicine', ts: c.ts });
+  // Anything else he changed himself: medicines, answers, gaps, his profile.
+  // One save can log two rows (a status and an answer): count it once.
+  const seen = new Set();
+  for (const c of canon.changelog || []) {
+    if (c.by !== 'Kimon' || !inWeek(c.ts)) continue;
+    const k = `${c.tab}|${String(c.key).split('.')[0]}|${String(c.ts).slice(0, 16)}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    items.push({ kind: c.tab === 'Medications' ? 'medicine' : 'record:' + c.tab, ts: c.ts });
+  }
   return { count: items.length, activeDays: new Set(items.map(i => melbDay(i.ts))).size, byKind: items.reduce((o, i) => ((o[i.kind] = (o[i.kind] || 0) + 1), o), {}) };
 }
 

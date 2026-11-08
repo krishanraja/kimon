@@ -8,7 +8,7 @@
 //            "fact" (one row per fact, newest wins).
 // Pure functions, no DOM; runs in the browser, on the server and in tests.
 import { TAGS, SYMPTOMS, BODY_CHECK, noteData, noteSummary, melbDay } from './kimon-model.js';
-import { extract, MEASURES, dateKey, fmtDate, liveResults, bpSeries } from './metrics.js';
+import { extract, MEASURES, dateKey, fmtDate, liveResults, bpSeries, bpInsight, bpLines } from './metrics.js';
 
 export const FACT_TAG = 'fact';
 export const FACT_TOPICS = ['symptom', 'history', 'medicine', 'lifestyle', 'care', 'family', 'other'];
@@ -134,7 +134,7 @@ export function bank(canon = {}, now = new Date()) {
   const bp = bpAll.length ? {
     count: bpAll.length, since: bpAll[bpAll.length - 1].at, latest: bpAll[0],
     last7: bpAll.filter(r => now.getTime() - new Date(r.at).getTime() <= 7 * DAY).length,
-    recent: bpAll.slice(0, 14),
+    recent: bpAll.slice(0, 14), lines: bpLines(bpInsight(canon, now)),
   } : null;
   return {
     bp, facts: facts(canon), symptoms: symptomTimeline(canon, now), adherence: adherence(canon, now),
@@ -152,6 +152,7 @@ export function bankItems(b) {
   const add = (title, items) => { if (items.length) groups.push({ title, items }); };
   if (b.bp) add('Blood pressure readings', [
     `${b.bp.count} reading${b.bp.count === 1 ? '' : 's'} since ${when(b.bp.since)}, ${b.bp.last7} in the last 7 days. Latest ${b.bp.latest.sys}/${b.bp.latest.dia} mmHg on ${when(b.bp.latest.at)}`,
+    ...(b.bp.lines || []),
     `Recent (newest first): ${b.bp.recent.map(r => `${r.sys}/${r.dia} ${when(r.at)}${r.corrected ? ' (corrected)' : ''}`).join('; ')}`,
   ]);
   add('Symptoms over time', b.symptoms.map(s => `${s.label}: ${s.count} time${s.count === 1 ? '' : 's'}, last ${when(s.last)} (${s.trend})`));

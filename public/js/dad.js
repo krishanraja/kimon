@@ -45,15 +45,20 @@ function home(canon) {
     <div class="dad-top"><h2>${esc(him())} this week</h2><a class="link" href="/me">See his app ↗</a></div>
     ${m.alerts.length ? `<section class="dad-alert ${LEVEL[m.alerts[0].level][1]}"><p class="kicker">Needs attention · ${esc(ago(m.alerts[0].ts))}</p><p>${esc(m.alerts[0].text.replace(/^(SYMPTOM|BODY CHECK):\s*/, ''))}</p>
       <button class="pill" data-ask>Ask what to do</button></section>` : ''}
+    ${m.bp ? `<section class="card dad-bp"><p class="kicker">Blood pressure · ${m.bp.readToday ? 'read today' : `last ${esc(ago(m.bp.latest.at))}`}</p>
+      <p><b>${m.bp.latest.sys}/${m.bp.latest.dia}</b> latest${m.bp.week ? ` · <b>${m.bp.week.sys}/${m.bp.week.dia}</b> 7-day average` : ''}${m.bp.streak >= 2 ? ` · ${m.bp.streak} days in a row` : ''}</p>
+      ${m.bp.sinceChange ? `<p class="soft">Since ${esc(m.bp.sinceChange.name)} was ${m.bp.sinceChange.what} on ${esc(fmtDate(m.bp.sinceChange.day))}: ${m.bp.sinceChange.after.n} reading${m.bp.sinceChange.after.n === 1 ? '' : 's'}, average ${m.bp.sinceChange.after.sys}/${m.bp.sinceChange.after.dia}</p>` : ''}</section>` : ''}
     <div class="dad-stats">
-      <div class="stat"><b>${m.habitDays}<small>/7</small></b><span>days he did his one thing</span></div>
+      ${m.bp ? `<div class="stat"><b>${m.bp.daysThisWeek}<small>/7</small></b><span>days with a reading</span></div>` : ''}
+      ${m.habitDays || !m.bp ? `<div class="stat"><b>${m.habitDays}<small>/7</small></b><span>days he did his one thing</span></div>` : ''}
       ${hasMeds ? `<div class="stat"><b>${m.medsDays}<small>/7</small></b><span>days tablets taken</span></div>` : ''}
       <div class="stat ${m.checkDue ? 'warm' : ''}"><b>${m.lastCheck ? esc(ago(m.lastCheck.ts)) : 'Not yet'}</b><span>${m.checkDue ? 'body check due' : 'last body check'}</span></div>
     </div>
+    ${!feed.length && m.lastSeen ? `<p class="dad-quiet">Last seen ${esc(ago(m.lastSeen))} · no symptoms or messages this week</p>` : `
     <section class="card dad-feed${feed.length ? '' : ' empty'}"><p class="kicker">${m.lastSeen ? `Lately · last seen ${esc(ago(m.lastSeen))}` : 'Lately'}</p>
       ${feed.length ? feed.map(f => `<div class="ev"><i class="ev-kind ${f.tone}">${f.kind}</i><span class="ev-body"><b>${esc(ago(f.ts))}</b>${f.chip ? ` <i class="chip ${f.chip[1]}">${f.chip[0]}</i>` : ''}<span>${esc(f.text)}</span></span>${f.tag ? `<button class="x" data-rm-ev="${feed.indexOf(f)}" aria-label="Remove this entry">×</button>` : ''}</div>`).join('')
         : `<h3>Nothing from ${esc(him())} yet</h3><p class="soft">Once he starts using his app, what he logs and says shows up here.</p>`}
-    </section>
+    </section>`}
     <div class="row dad-actions"><button class="btn" data-plan>Care plan</button><button class="btn primary grow" data-nudge>Send a nudge</button></div>
   </div>`;
   root.querySelector('[data-plan]').onclick = () => { view = 'plan'; render(); };
