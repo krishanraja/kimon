@@ -20,15 +20,21 @@
 - The medicine pick list adds four medicines and two times ("Short course", "Before a test or procedure").
 
 **Evidence**
-- 116/116 unit tests pass (7 new in `test/insight.test.js`, invented data only). 33/33 simulation checks pass.
+- 123/123 unit tests pass (14 new in `test/insight.test.js` and `test/quick-checks.test.js`, invented data only).
+- Quick questions walked end to end in the real app at 360x560: all seven fit with no scroll, every answer target is at least 44px tall, and the emulated sheet showed the expected Medications, KnowledgeGaps, Questions and Notes rows. 33/33 simulation checks pass.
 - Real-app run against the emulator with an invented copy of the live sheet's shape: tapping the tablets row writes `meds-taken`; an unchanged medicine writes `med-checked`; the Saved screen reads "5 days in a row. Your 7-day average is 123/79. Your appointment is in 8 days." Family tab renders with no page scroll and no clipping at 360x560 and 390x664.
 
-**Waiting on Krish (only he or Kimon can settle these in the sheet)**
-1. One medicine is listed as ongoing, but Kimon's own note describes it as two doses around his scan. Its time can now be set to "Before a test or procedure".
-2. A supplement Kimon named in his notes is not on the medicines list. It can now be picked.
-3. Knowledge gap G4 (cardiology appointment date) is still open, though his answers say he has seen the cardiologist. Questions Q4 and Q7 are still open.
-4. No tablet ticks exist for 5 to 8 November. They were not backfilled: re-saving the list is not evidence he took that day's dose.
+**Loose ends Kimon now settles himself, one tap each (`public/js/quick-checks.js`)**
+Once today's reading and tablets are done, Today's main button becomes "N quick questions". One question per screen, three or four plain answers, one tap saves and moves on, and "Skip for now" hides them until tomorrow. Each is worked out from the sheet on every load, so a question disappears as soon as anyone settles it, and an answer is never asked twice (a `quick-check` note records it).
+1. A medicine listed "When needed" asks when he takes it. "Only before a test or scan" sets that time on the list.
+2. A medicine he named in his own notes but not on the list asks, in his own word for it, whether he takes it now. The answer adds it as taking, finished or not sure.
+3. An open cardiology appointment gap asks whether he has seen the heart specialist. "Yes" closes it.
+4. Two open doctor questions (medicine changes, how often reviewed) offer one-tap answers. The medicine-changes answer offers the change already on his list.
+5. Days this week with a reading but no tablet tick ask whether he took them. "Yes, every day" ticks those days, marked as ticked later; "I missed some" stays honest.
+His answers show in the family feed and in Leffy's knowledge bank.
 
-**Next step:** Krish merges and deploys, then checks on 16 November that the tablets stat on the family tab moves with Kimon's daily use.
+On the live sheet this is expected to raise seven questions. Nothing was written to the live sheet from this session.
+
+**Next step:** after the deploy, check the sheet once Kimon has opened the app: seven `quick-check` notes, the medicines list, G4, Q4 and Q7. On 16 November, check the tablets stat on the family tab moves with his daily use.
 
 **North Star check:** 44 entries by Kimon on 5 separate days in the week of 2 November, against a target of 1 (U1, on pace). His daily tablet confirmations from 5 to 8 November left no row, so the true figure is higher. From this deploy on they are counted.

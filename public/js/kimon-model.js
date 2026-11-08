@@ -70,6 +70,19 @@ export function noteData(n) {
 }
 export function noteSummary(n) { return String(n.text || '').split('\nDATA: ')[0].split('\nRID: ')[0]; }
 
+// Days he takes tablets: the day a tick was saved, plus any earlier days he
+// confirmed afterwards (DATA.days). Used by every tablets count.
+export function tabletDays(notes = [], by = null) {
+  const out = new Set();
+  for (const n of notes) {
+    if (n.tag !== TAGS.meds || (by && n.by !== by)) continue;
+    const d = noteData(n);
+    if (Array.isArray(d?.days) && d.days.length) d.days.forEach(x => out.add(String(x)));
+    else out.add(melbDay(n.tsUTC));
+  }
+  return out;
+}
+
 // Urgency for a symptom log: the shared red-flag rules plus the structured fields.
 export function symptomLevel(log) {
   const s = SYMPTOMS.find(x => x.id === log.symptom);
@@ -102,8 +115,10 @@ export function monitor(canon, now = new Date()) {
   const checks = notes.filter(n => n.tag === TAGS.check).map(n => ({ ts: n.tsUTC, ...noteData(n), summary: noteSummary(n) }));
   const lastCheck = checks.pop() || null;
   const habitDays = new Set(recent.filter(n => n.tag === TAGS.habit && noteData(n)?.done).map(n => melbDay(n.tsUTC)));
-  const medsDays = new Set(recent.filter(n => n.tag === TAGS.meds).map(n => melbDay(n.tsUTC)));
-  const said = recent.filter(n => n.tag === TAGS.talk).map(n => ({ ts: n.tsUTC, text: noteSummary(n).replace(/^KIMON SAYS:\s*/i, '') }));
+  const weekDays = new Set([...Array(7)].map((_, i) => melbDay(now.getTime() - i * 86400000)));
+  const medsDays = new Set([...tabletDays(notes)].filter(d => weekDays.has(d)));
+  // What he said, and his one-tap answers to quick questions.
+  const said = recent.filter(n => n.tag === TAGS.talk || n.tag === 'quick-check').map(n => ({ ts: n.tsUTC, text: noteSummary(n).replace(/^(KIMON SAYS|QUICK CHECK):\s*/i, '') }));
   const alerts = [...logs.filter(l => LEVEL_RANK[l.level] >= 2).map(l => ({ ts: l.ts, level: l.level, text: l.summary }))];
   if (lastCheck && new Date(lastCheck.ts).getTime() >= weekAgo && LEVEL_RANK[lastCheck.level] >= 2) alerts.push({ ts: lastCheck.ts, level: lastCheck.level, text: lastCheck.summary });
   // Last time he added anything: notes, readings, check-ins or list changes.

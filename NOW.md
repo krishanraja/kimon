@@ -30,7 +30,7 @@ Lifecycle: live. The detail is in `README.md`.
 
 ## What changed recently
 
-- 2026-11-08 **Usage audit: what Kimon enters now reaches the family, Leffy and his own screens.** He was re-saving each medicine unchanged every day instead of ticking his tablets, which recorded nothing; the tablets row now ticks them, and an unchanged medicine is logged as checked. The family tab shows his readings, his 7-day average, his streak and how readings compare since his last medicine change. See `now-notes/2026-11-08-usage-audit.md`.
+- 2026-11-08 **Usage audit: what Kimon enters now reaches the family, Leffy and his own screens.** He was re-saving each medicine unchanged every day instead of ticking his tablets, which recorded nothing; the tablets row now ticks them, and an unchanged medicine is logged as checked. The family tab shows his readings, his 7-day average, his streak and how readings compare since his last medicine change. Loose ends in his record become one-tap quick questions on his Today screen. See `now-notes/2026-11-08-usage-audit.md`.
 
 - 2026-11-03 **Kimon's app rebuilt around one repeat action: typed-in blood pressure, one medicines list, once-only saving.** In production. The Apps Script redeploy is done: readings have saved to the sheet since 4 November. See `now-notes/2026-11-03-beside-patient-app.md`.
 
@@ -38,7 +38,7 @@ Lifecycle: live. The detail is in `README.md`.
 
 ## What is next and what is waiting on Krish
 
-- Krish to review four entries in the live sheet that only he or Kimon can settle (listed in `now-notes/2026-11-08-usage-audit.md`).
+- After the deploy, Kimon settles seven loose ends in his record himself, one tap each. Check the sheet once he has opened the app.
 - Measure the North Star number again on Monday 16 November (target 2).
 - North Star check (2026-10-23): holds.
 

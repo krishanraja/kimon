@@ -7,9 +7,10 @@ import { pickPhoto, shrink } from './photo.js';
 import { fmtDate, bpSeries, bpInsight, daysUntil } from './metrics.js';
 import { triage } from './triage.js';
 import { removalNote, liveNotes, REMOVABLE } from './kimon-model.js';
-import { SYMPTOMS, WHEN, SEVERITY, BODY_CHECK, TAGS, symptomLevel, checkLevel, noteText, melbDay, pendingNudge } from './kimon-model.js';
+import { SYMPTOMS, WHEN, SEVERITY, BODY_CHECK, TAGS, symptomLevel, checkLevel, noteText, melbDay, pendingNudge, tabletDays } from './kimon-model.js';
 import { currentMeds, medLine, needsCheck, CONFIRM_TAG, MED_CHECK_TAG } from './meds-model.js';
 import { createOutbox, newOpId } from './outbox.js';
+import { quickChecks, quickNote } from './quick-checks.js';
 import { MED_CATALOG, MED_WHEN, NOT_SURE, strengthsOf, inCatalog } from './med-catalog.js';
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -179,7 +180,7 @@ function fits(rowVar, other) {
 
 /* ---------- Today ---------- */
 function readings() { return bpSeries((canon?.testResults) || []).readings; }
-function tabletsDays() { return new Set((canon?.notes || []).filter(n => n.tag === TAGS.meds && n.by === 'Kimon').map(n => melbDay(n.tsUTC))); }
+function tabletsDays() { return tabletDays(canon?.notes || [], 'Kimon'); }
 
 function weekStrip() {
   const rs = readings(), tabs = tabletsDays(), hasMeds = !currentMeds(canon || {}).empty;
@@ -246,6 +247,8 @@ function todayScreen() {
   if (s.waiting.length) act = primary(`Send ${s.waiting.length === 1 ? 'it' : 'them'} now`, 'send', 'data-flush');
   else if (!r) act = primary("Add today's reading", 'plus', 'data-add');
   else if (!s.meds.empty && !s.took) act = primary("I took today's tablets", 'check', 'data-took');
+  // Today's things done: a few one-tap questions, if any, and not skipped today.
+  else if (quickDue().length) act = primary(quickDue().length === 1 ? 'One quick question' : `${quickDue().length} quick questions`, 'q', 'data-quick');
   else act = primary('Add another reading', 'plus', 'data-add');
 
   const d = new Date();
@@ -264,6 +267,7 @@ function todayScreen() {
     act,
   });
   on('[data-add]', () => bpEntry());
+  on('[data-quick]', () => quickFlow());
   on('[data-readings]', () => readingsScreen(() => todayScreen()));
   const tick = async b => {
     if (b) b.disabled = true;
@@ -641,6 +645,53 @@ function medConfirm(before, after) {
     if (st === 'rejected') return toast("That didn't save. Try again.");
     medsScreen();
     toast(st === 'saved' ? 'Saved. Your family and Leffy see the new list.' : 'Changed here. Waiting to send.');
+  });
+}
+
+/* ---------- quick questions: one tap each ---------- */
+// Loose ends in his record only he can settle (quick-checks.js). One per
+// screen; a tap saves it and moves on. "Skip for now" hides them until tomorrow.
+function quickDue() {
+  if (recordState() === 'none' || store.get('quickSkip', '') === today()) return [];
+  return quickChecks(canon || {});
+}
+function applyLocal(action, p) {
+  canon ||= {};
+  if (action === 'medication') {
+    const list = (canon.medications ||= []);
+    const row = list.find(r => r.name === p.name);
+    if (row) Object.assign(row, { frequency: p.frequency, status: p.status, updated: today() });
+    else list.push({ name: p.name, dose: p.dose || '', frequency: p.frequency || '', status: p.status, source: 'app', updated: today() });
+  }
+  if (action === 'gap') { const g = (canon.gaps || []).find(x => x.id === p.id); if (g) g.status = p.status; }
+  if (action === 'question') { const q = (canon.questions || []).find(x => x.id === p.id); if (q) Object.assign(q, { status: p.status, answer: p.answer }); }
+  store.set('canon', canon);
+}
+function quickFlow(asked = 0) {
+  app.dataset.tabroot = '';
+  const list = quickChecks(canon || {});
+  if (!list.length) { todayScreen(); return asked ? toast('Thanks. Your family and Leffy can see your answers.') : null; }
+  const c = list[0];
+  frame({
+    eyebrow: list.length === 1 ? 'Last quick question' : `Quick question · ${list.length} left`, title: c.title, tabId: 'today',
+    body: `<p class="j-q">${esc(c.q)}</p><div class="j-opts">${c.opts.map(o => `<button class="j-opt" data-o="${esc(o.k)}"><span class="j-dot"></span>${esc(o.label)}</button>`).join('')}</div>`,
+    act: link('Skip for now', 'data-skip'),
+  });
+  on('[data-skip]', () => { store.set('quickSkip', today()); todayScreen(); });
+  let busy = false;
+  onAll('[data-o]', async b => {
+    if (busy) return; busy = true;
+    b.setAttribute('aria-checked', 'true');
+    const o = c.opts.find(x => x.k === b.dataset.o);
+    for (const w of o.writes) {
+      if (w.note) { await note(w.note.tag, w.note.summary, w.note.data); continue; }
+      applyLocal(w.action, w.payload);
+      const st = await send(w.action, w.payload);
+      if (st === 'rejected') { busy = false; return toast("That didn't save. Try again."); }
+    }
+    const n = quickNote(c, o);
+    await note(n.tag, n.summary, n.data);
+    quickFlow(asked + 1);
   });
 }
 

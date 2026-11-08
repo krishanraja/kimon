@@ -7,7 +7,7 @@
 //   learned: facts Leffy picked up in conversation, saved as Notes tagged
 //            "fact" (one row per fact, newest wins).
 // Pure functions, no DOM; runs in the browser, on the server and in tests.
-import { TAGS, SYMPTOMS, BODY_CHECK, noteData, noteSummary, melbDay } from './kimon-model.js';
+import { TAGS, SYMPTOMS, BODY_CHECK, noteData, noteSummary, melbDay, tabletDays } from './kimon-model.js';
 import { extract, MEASURES, dateKey, fmtDate, liveResults, bpSeries, bpInsight, bpLines } from './metrics.js';
 
 export const FACT_TAG = 'fact';
@@ -106,10 +106,13 @@ export function adherence(canon, now = new Date()) {
   const notes = realNotes(canon);
   const days = (tag, within, pred = () => true) => new Set(notes.filter(n => n.tag === tag && t - tsOf(n) <= within * DAY && pred(n)).map(n => melbDay(n.tsUTC))).size;
   const done = n => noteData(n)?.done !== false;
+  // Tablets count the days he took them, including days he confirmed later.
+  const tablets = tabletDays(notes);
+  const tabletWithin = within => [...tablets].filter(d => t - new Date(`${d}T12:00:00+11:00`).getTime() <= within * DAY).length;
   return {
     habit7: days(TAGS.habit, 7, done), habit28: days(TAGS.habit, 28, done),
     skipped28: days(TAGS.habit, 28, n => noteData(n)?.done === false),
-    meds7: days(TAGS.meds, 7), meds28: days(TAGS.meds, 28),
+    meds7: tabletWithin(7), meds28: tabletWithin(28),
     started: notes.filter(n => n.by === 'Kimon').map(n => n.tsUTC).sort()[0] || '',
   };
 }
@@ -124,7 +127,7 @@ export function bank(canon = {}, now = new Date()) {
   });
   const checks = (canon.checkins || []).slice(-6).map(c => c.verdict).filter(Boolean);
   const answered = (canon.questions || []).filter(q => q.status === 'answered' && q.answer).map(q => ({ q: q.question, a: q.answer }));
-  const foundOut = notes.filter(n => n.tag === 'found-out').map(n => ({ ts: n.tsUTC, text: noteSummary(n).replace(/^FOUND OUT[^:]*:\s*/i, '') }));
+  const foundOut = notes.filter(n => n.tag === 'found-out' || n.tag === 'quick-check').map(n => ({ ts: n.tsUTC, text: noteSummary(n).replace(/^(FOUND OUT[^:]*|QUICK CHECK):\s*/i, '') }));
   const said = notes.filter(n => n.tag === TAGS.talk).map(n => ({ ts: n.tsUTC, text: noteSummary(n).replace(/^KIMON SAYS:\s*/i, '') }));
   const concerns = notes.filter(n => n.tag === 'concern').map(n => ({ ts: n.tsUTC, text: (String(n.text).match(/^CONCERN:\s*([\s\S]*?)(?:\nURGENCY:|$)/) || [, ''])[1].trim() })).filter(c => c.text);
   const live = liveResults(canon.testResults || []);
