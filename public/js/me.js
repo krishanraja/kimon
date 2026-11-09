@@ -10,7 +10,7 @@ import { removalNote, liveNotes, REMOVABLE } from './kimon-model.js';
 import { SYMPTOMS, WHEN, SEVERITY, BODY_CHECK, TAGS, symptomLevel, checkLevel, noteText, melbDay, pendingNudge, tabletDays } from './kimon-model.js';
 import { currentMeds, medLine, needsCheck, CONFIRM_TAG, MED_CHECK_TAG } from './meds-model.js';
 import { createOutbox, newOpId } from './outbox.js';
-import { quickChecks, quickNote } from './quick-checks.js';
+import { todaysQuestion, quickNote } from './quick-checks.js';
 import { MED_CATALOG, MED_WHEN, NOT_SURE, strengthsOf, inCatalog } from './med-catalog.js';
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -248,7 +248,7 @@ function todayScreen() {
   else if (!r) act = primary("Add today's reading", 'plus', 'data-add');
   else if (!s.meds.empty && !s.took) act = primary("I took today's tablets", 'check', 'data-took');
   // Today's things done: a few one-tap questions, if any, and not skipped today.
-  else if (quickDue().length) act = primary(quickDue().length === 1 ? 'One quick question' : `${quickDue().length} quick questions`, 'q', 'data-quick');
+  else if (quickDue()) act = primary('One quick question', 'q', 'data-quick');
   else act = primary('Add another reading', 'plus', 'data-add');
 
   const d = new Date();
@@ -652,8 +652,8 @@ function medConfirm(before, after) {
 // Loose ends in his record only he can settle (quick-checks.js). One per
 // screen; a tap saves it and moves on. "Skip for now" hides them until tomorrow.
 function quickDue() {
-  if (recordState() === 'none' || store.get('quickSkip', '') === today()) return [];
-  return quickChecks(canon || {});
+  if (recordState() === 'none' || store.get('quickSkip', '') === today()) return null;
+  return todaysQuestion(canon || {});
 }
 function applyLocal(action, p) {
   canon ||= {};
@@ -667,13 +667,13 @@ function applyLocal(action, p) {
   if (action === 'question') { const q = (canon.questions || []).find(x => x.id === p.id); if (q) Object.assign(q, { status: p.status, answer: p.answer }); }
   store.set('canon', canon);
 }
-function quickFlow(asked = 0) {
+// One question a day. Answering it, or skipping, returns to Today.
+function quickFlow() {
   app.dataset.tabroot = '';
-  const list = quickChecks(canon || {});
-  if (!list.length) { todayScreen(); return asked ? toast('Thanks. Your family and Leffy can see your answers.') : null; }
-  const c = list[0];
+  const c = quickDue();
+  if (!c) return todayScreen();
   frame({
-    eyebrow: list.length === 1 ? 'Last quick question' : `Quick question · ${list.length} left`, title: c.title, tabId: 'today',
+    eyebrow: "Today's quick question", title: c.title, tabId: 'today',
     body: `<p class="j-q">${esc(c.q)}</p><div class="j-opts">${c.opts.map(o => `<button class="j-opt" data-o="${esc(o.k)}"><span class="j-dot"></span>${esc(o.label)}</button>`).join('')}</div>`,
     act: link('Skip for now', 'data-skip'),
   });
@@ -690,8 +690,9 @@ function quickFlow(asked = 0) {
       if (st === 'rejected') { busy = false; return toast("That didn't save. Try again."); }
     }
     const n = quickNote(c, o);
-    await note(n.tag, n.summary, n.data);
-    quickFlow(asked + 1);
+    const st = await note(n.tag, n.summary, n.data);
+    todayScreen();
+    toast(st === 'saved' ? 'Thanks. Your family and Leffy can see it.' : 'Thanks. Waiting to send.');
   });
 }
 

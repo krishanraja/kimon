@@ -126,10 +126,12 @@ export function quickChecks(canon = {}, now = new Date()) {
   // 5. Days this week he saved a reading but did not tick his tablets.
   if (meds.current.length) {
     const ticked = tabletDays(canon.notes || [], 'Kimon');
+    // Days he already answered about, whatever he said, are never asked again.
+    const askedDays = new Set([...done].filter(id => id.startsWith('tablets:')).flatMap(id => id.slice(8).split(',')));
     const today = melbDay(now);
     const days = [...new Set(bpSeries(canon.testResults || []).readings
       .filter(r => r.by === 'Kimon' && now.getTime() - new Date(r.at).getTime() <= 7 * DAY)
-      .map(r => melbDay(r.at)))].filter(d => d !== today && !ticked.has(d)).sort();
+      .map(r => melbDay(r.at)))].filter(d => d !== today && !ticked.has(d) && !askedDays.has(d)).sort();
     const id = `tablets:${days.join(',')}`;
     if (days.length && !done.has(id)) {
       const names = days.map(d => new Date(`${d}T12:00:00+11:00`).toLocaleDateString('en-AU', { weekday: 'short', timeZone: 'Australia/Melbourne' }));
@@ -145,6 +147,17 @@ export function quickChecks(canon = {}, now = new Date()) {
     }
   }
   return out;
+}
+
+// At most one question a day, so it never feels like a form. None if he
+// has already answered one today (Melbourne). Tablets come first: the days
+// in question slip out of the week and out of his memory soonest.
+const FIRST = { tablets: 0, medicine: 1, record: 2 };
+export function todaysQuestion(canon = {}, now = new Date()) {
+  const today = melbDay(now);
+  if ((canon.notes || []).some(n => n.tag === QUICK_TAG && n.by === 'Kimon' && melbDay(n.tsUTC) === today)) return null;
+  const list = quickChecks(canon, now);
+  return list.map((c, i) => ({ c, i })).sort((a, b) => (FIRST[a.c.kind] ?? 9) - (FIRST[b.c.kind] ?? 9) || a.i - b.i)[0]?.c || null;
 }
 
 // The note that records his answer. Plain words first, for the family feed.

@@ -38,7 +38,7 @@ Lifecycle: live. The detail is in `README.md`.
 
 ## What is next and what is waiting on Krish
 
-- After the deploy, Kimon settles seven loose ends in his record himself, one tap each. Check the sheet once he has opened the app.
+- Kimon settles seven loose ends in his record himself, one quick question a day, one tap each. Check the sheet for one new answer a day.
 - Measure the North Star number again on Monday 16 November (target 2).
 - North Star check (2026-10-23): holds.
 
