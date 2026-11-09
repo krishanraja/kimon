@@ -25,7 +25,7 @@
 - Real-app run against the emulator with an invented copy of the live sheet's shape: tapping the tablets row writes `meds-taken`; an unchanged medicine writes `med-checked`; the Saved screen reads "5 days in a row. Your 7-day average is 123/79. Your appointment is in 8 days." Family tab renders with no page scroll and no clipping at 360x560 and 390x664.
 
 **Loose ends Kimon now settles himself, one tap each (`public/js/quick-checks.js`)**
-Once today's reading and tablets are done, Today's main button becomes "N quick questions". One question per screen, three or four plain answers, one tap saves and moves on, and "Skip for now" hides them until tomorrow. Each is worked out from the sheet on every load, so a question disappears as soon as anyone settles it, and an answer is never asked twice (a `quick-check` note records it).
+Once today's reading and tablets are done, Today's main button becomes "One quick question". **At most one a day** (Ruling, Krish, 2026-11-09: one per day, not a batch), tablets first because those days slip from memory soonest. Three or four plain answers, one tap saves and returns to Today, and "Skip for now" hides it until tomorrow. Each question is worked out from the sheet on every load, so it disappears as soon as anyone settles it, and nothing is asked twice: days he already answered about are never asked again (a `quick-check` note records each answer).
 1. A medicine listed "When needed" asks when he takes it. "Only before a test or scan" sets that time on the list.
 2. A medicine he named in his own notes but not on the list asks, in his own word for it, whether he takes it now. The answer adds it as taking, finished or not sure.
 3. An open cardiology appointment gap asks whether he has seen the heart specialist. "Yes" closes it.
@@ -33,8 +33,8 @@ Once today's reading and tablets are done, Today's main button becomes "N quick 
 5. Days this week with a reading but no tablet tick ask whether he took them. "Yes, every day" ticks those days, marked as ticked later; "I missed some" stays honest.
 His answers show in the family feed and in Leffy's knowledge bank.
 
-On the live sheet this is expected to raise seven questions. Nothing was written to the live sheet from this session.
+On the live sheet this is expected to raise seven questions, so about a week of one a day. Nothing was written to the live sheet from this session.
 
-**Next step:** after the deploy, check the sheet once Kimon has opened the app: seven `quick-check` notes, the medicines list, G4, Q4 and Q7. On 16 November, check the tablets stat on the family tab moves with his daily use.
+**Next step:** after the deploy, check the sheet each day for one new `quick-check` note; over about a week the medicines list, G4, Q4 and Q7 settle. On 16 November, check the tablets stat on the family tab moves with his daily use.
 
 **North Star check:** 44 entries by Kimon on 5 separate days in the week of 2 November, against a target of 1 (U1, on pace). His daily tablet confirmations from 5 to 8 November left no row, so the true figure is higher. From this deploy on they are counted.

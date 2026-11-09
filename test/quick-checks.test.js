@@ -3,7 +3,7 @@
 // Invented data only: this repo is public.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { quickChecks, quickNote, QUICK_TAG } from '../public/js/quick-checks.js';
+import { quickChecks, quickNote, todaysQuestion, QUICK_TAG } from '../public/js/quick-checks.js';
 import { noteText, monitor, tabletDays } from '../public/js/kimon-model.js';
 import { adherence } from '../public/js/knowledge-bank.js';
 import { checkMedWrite } from '../public/js/med-catalog.js';
@@ -98,4 +98,20 @@ test('one-tap answers write through the real sheet script', () => {
   assert.equal(c.questions[0].answer, 'Every 6 months (Kimon, 8 Nov)');
   assert.equal(c.medications[0].frequency, 'Before a test or procedure');
   assert.ok(c.changelog.some(x => x.key === 'Metoprolol.frequency' && x.by === 'Kimon'));
+});
+
+test('one question a day: tablets first, then nothing more until tomorrow', () => {
+  const c = canon();
+  const q = todaysQuestion(c, NOW);
+  assert.equal(q.kind, 'tablets');
+  const n = quickNote(q, q.opts[1]);
+  c.notes.push({ tsUTC: NOW.toISOString(), by: 'Kimon', tag: n.tag, text: noteText(n.summary, n.data) });
+  assert.equal(todaysQuestion(c, NOW), null); // answered today: no more today
+  const tomorrow = new Date(NOW.getTime() + 86400000);
+  // Tomorrow asks only about the one new day, never the days he answered.
+  assert.equal(todaysQuestion(c, tomorrow).id, 'tablets:2026-11-08');
+  // An answer the family typed does not use up his question for the day.
+  const f = canon();
+  f.notes.push({ tsUTC: NOW.toISOString(), by: 'Sam', tag: QUICK_TAG, text: noteText('x', { id: 'other' }) });
+  assert.equal(todaysQuestion(f, NOW).kind, 'tablets');
 });
