@@ -5,6 +5,8 @@
 import { readPlan } from './kimon-model.js';
 import { facts } from './knowledge-bank.js';
 import { parseDate } from './metrics.js';
+import { NOT_DAILY } from './med-catalog.js';
+export { NOT_DAILY };
 
 export const MED_STATUS = { current: 'current', stopped: 'stopped', unconfirmed: 'unconfirmed', removed: 'removed', superseded: 'superseded' };
 export const CONFIRM_TAG = 'meds-confirmed';
@@ -85,6 +87,13 @@ export function medsContext(canon) {
   }
   L.push('Rules: a medicine missing from the list is NOT evidence he does not take it; say it is not recorded and ask. Being on the list is NOT evidence he took today\'s dose; the tablets log says that. Never suggest starting, stopping or changing a medicine.');
   return L.join('\n');
+}
+
+// Medicines he takes every day: the ones "I took today's tablets" records.
+// A medicine for a test, a short course or "when needed" is never ticked as
+// taken daily (one taken only before a scan was once recorded as daily).
+export function dailyMeds(canon = {}) {
+  return currentMeds(canon).current.filter(m => !NOT_DAILY.includes(m.when));
 }
 
 // A medicine row as Kimon sees it, e.g. "Medicine A (synthetic) · 10 mg · night".

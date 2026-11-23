@@ -1,3 +1,4 @@
+import { NOT_DAILY } from './med-catalog.js';
 // Turns the sheet's free-text test results into structured measures with
 // plain-language meaning. Pure: no DOM, no network. Runs in browser and tests.
 // Thresholds come only from the lab report reference ranges and the evidence
@@ -96,8 +97,12 @@ export function bpInsight(canon = {}, now = new Date()) {
   // still shows in the morning before today's reading).
   let streak = 0;
   for (let i = days.has(melb(now)) ? 0 : 1; days.has(melb(t - i * DAY)); i++) streak++;
+  // A medicine taken only before a test (or when needed) is not a change
+  // that blood pressure should be compared across.
+  const occasional = new Set((canon.medications || []).filter(m => NOT_DAILY.includes(m.frequency)).map(m => String(m.name).toLowerCase()));
   const change = (canon.changelog || [])
     .filter(c => c.tab === 'Medications' && /\.status$/.test(c.key) && (c.new === 'stopped' || (c.new === 'current' && c.old === 'stopped')))
+    .filter(c => !occasional.has(String(c.key).replace(/\.status$/, '').toLowerCase()))
     .sort((a, b) => String(a.ts).localeCompare(String(b.ts))).pop();
   let sinceChange = null;
   if (change) {

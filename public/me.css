@@ -282,3 +282,50 @@ body.kb .j-act { position: fixed; z-index: 5; left: max(16px, calc(50% - 244px))
 .j-chipbtn { min-height: 48px; border-radius: 14px; background: var(--card); box-shadow: var(--shadow); border: 2px solid transparent; font-size: 15px; font-weight: 600; color: var(--ink); padding: 4px 6px; line-height: 1.2; }
 .j-chipbtn[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
 .j-esc[data-mic][aria-pressed="true"] { color: var(--j-bad); }
+
+/* For my doctor */
+.j-chart.tap { cursor: pointer; text-align: left; }
+.j-chart.tap:active { background: var(--accent-soft); }
+.j-chart-h span { display: inline-flex; align-items: center; gap: 2px; }
+.j-nums { display: grid; grid-template-columns: 1fr 1fr 16px; align-items: center; gap: 12px; height: var(--row); padding: 0 14px 0 16px; width: 100%; text-align: left; color: var(--ink); }
+.j-nums span { display: flex; flex-direction: column; min-width: 0; }
+.j-nums small { font-size: 13px; line-height: 16px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.j-nums b { font-size: 22px; line-height: 26px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+.j-nums:active { background: var(--accent-soft); }
+.j-facts { padding: 4px 16px; }
+.j-facts div { display: flex; flex-direction: column; padding: 9px 0; }
+.j-facts div + div { border-top: 1px solid var(--line); }
+.j-facts small { font-size: 13px; line-height: 17px; color: var(--ink-2); }
+.j-facts b { font-size: 17px; line-height: 22px; font-weight: 650; }
+.j-why { padding: 14px 16px; }
+.j-why b { font-size: 13px; font-weight: 650; color: var(--ink-2); letter-spacing: .06em; text-transform: uppercase; }
+.j-why p { font-size: 16px; line-height: 22px; margin-top: 6px; color: var(--ink); }
+
+/* What's new: a one-time sheet over Today */
+.wn { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; justify-content: center; }
+.wn-scrim { position: absolute; inset: 0; background: rgba(0, 0, 0, .38); opacity: 0; transition: opacity .28s ease-out; }
+.wn-sheet { position: relative; width: 100%; max-width: 520px; max-height: calc(var(--app-h, 100dvh) - 24px); background: var(--card); border-radius: 28px 28px 0 0; box-shadow: 0 -8px 40px rgba(0, 0, 0, .18);
+  padding: 20px 20px calc(16px + var(--safe-b, 0px)); display: flex; flex-direction: column; align-items: center; gap: 10px; transform: translateY(100%); transition: transform .28s cubic-bezier(.2, .8, .2, 1); }
+.wn.in .wn-scrim { opacity: 1; }
+.wn.in .wn-sheet { transform: none; }
+.wn-sheet::before { content: ""; position: absolute; top: 8px; width: 36px; height: 5px; border-radius: 3px; background: var(--line); }
+.wn-x { position: absolute; top: 10px; right: 10px; width: 44px; height: 44px; border-radius: 22px; display: grid; place-items: center; color: var(--ink-2); }
+.wn-leffy { width: min(84px, 15vh); flex: none; margin-top: 4px; }
+.wn-eyebrow { font-size: 13px; font-weight: 650; color: var(--accent); letter-spacing: .08em; text-transform: uppercase; }
+.wn-sheet h2 { font: 700 24px/28px var(--serif); letter-spacing: -.02em; margin-top: -6px; outline: none; }
+.wn-cards { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.wn-card { display: grid; grid-template-columns: var(--ic, 40px) minmax(0, 1fr); gap: 12px; align-items: start; background: var(--bg); border-radius: 18px; padding: 12px 14px;
+  opacity: 0; transform: translateY(10px); transition: opacity .3s ease-out, transform .3s ease-out; transition-delay: calc(140ms + var(--i) * 60ms); }
+.wn.in .wn-card { opacity: 1; transform: none; }
+.wn-tx { display: flex; flex-direction: column; min-width: 0; }
+.wn-tx b { font-size: 17px; line-height: 22px; font-weight: 650; }
+.wn-tx small { font-size: 15px; line-height: 20px; color: var(--ink-2); }
+.wn-go { align-self: flex-start; min-height: 44px; margin: -4px 0 -10px; padding: 0; color: var(--accent); font-weight: 650; font-size: 16px; }
+.wn-ok { width: 100%; margin-top: 4px; flex: none; }
+@media (prefers-reduced-motion: reduce) {
+  .wn-scrim, .wn-sheet, .wn-card { transition: none; }
+}
+.wn .j-ic { width: 44px; height: 44px; border-radius: 12px; }
+.wn-sheet { background: radial-gradient(120% 60% at 50% 0%, var(--accent-soft), var(--card) 62%); }
+.wn-card { background: color-mix(in srgb, var(--bg) 80%, var(--card)); }
+.j-facts div { padding: 7px 0; }

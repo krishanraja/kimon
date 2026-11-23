@@ -53,6 +53,12 @@ straight in as Kimon. Changing `ACCESS_CODE` logs every phone out.
 - **Dad tab (family)**: monitor what Kimon logs (alerts first, habits and
   tablets this week, his body check, what he said), send him nudges, and set
   his care plan (daily habits, tablets).
+- **For my doctor (`/me`, Health)**: his home blood pressure, tablets ticked
+  and check-ins on one page, plus the questions worth asking next, each worked
+  out from a gap in his record (`public/js/for-doctor.js`): the angiogram
+  result, a cholesterol re-check against his goal, which kind of care he is
+  getting, his blood pressure since a medicine change, and who reviews him.
+  "I asked this" hides one. Leffy and the family brief use the same list.
 - **Kimon's own app (`/me`)**: big text. One small thing a day from the care
   plan, tick tablets, log a symptom any time (red flags show "Call 000"), a
   weekly 5-question body check designed for honest answers, "Tell the family"
@@ -101,6 +107,11 @@ npm test                                             # unit tests
 node scripts/simulate.mjs                            # a month of Kimon + family use, checked row by row
 MOCK_SHEET=1 MOCK_AI=1 node scripts/dev-server.mjs   # app on :3000, passcode "local"
 ```
+
+**What's new (Kimon's app):** any change Kimon would notice adds one item,
+with a new id, to `WHATS_NEW` in `public/js/whats-new.js`. He sees it once,
+the next time he opens his app, and one tap closes it. Invisible fixes add
+nothing. A brand-new phone never sees it.
 
 `MOCK_SHEET=1` runs the real `apps-script/Code.gs` against an in-memory sheet
 (`scripts/gas-emulator.mjs`), with Google Sheets' own typing of dates and

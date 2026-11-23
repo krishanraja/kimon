@@ -118,7 +118,7 @@ export function monitor(canon, now = new Date()) {
   const weekDays = new Set([...Array(7)].map((_, i) => melbDay(now.getTime() - i * 86400000)));
   const medsDays = new Set([...tabletDays(notes)].filter(d => weekDays.has(d)));
   // What he said, and his one-tap answers to quick questions.
-  const said = recent.filter(n => n.tag === TAGS.talk || n.tag === 'quick-check').map(n => ({ ts: n.tsUTC, text: noteSummary(n).replace(/^(KIMON SAYS|QUICK CHECK):\s*/i, '') }));
+  const said = recent.filter(n => n.tag === TAGS.talk || n.tag === 'quick-check' || n.tag === 'doctor-asked').map(n => ({ ts: n.tsUTC, text: noteSummary(n).replace(/^(KIMON SAYS|QUICK CHECK):\s*/i, '') }));
   const alerts = [...logs.filter(l => LEVEL_RANK[l.level] >= 2).map(l => ({ ts: l.ts, level: l.level, text: l.summary }))];
   if (lastCheck && new Date(lastCheck.ts).getTime() >= weekAgo && LEVEL_RANK[lastCheck.level] >= 2) alerts.push({ ts: lastCheck.ts, level: lastCheck.level, text: lastCheck.summary });
   // Last time he added anything: notes, readings, check-ins or list changes.
