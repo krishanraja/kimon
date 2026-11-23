@@ -11,6 +11,7 @@ import { replyStream } from '../lib/reply-stream.js';
 import { RESULTS_RULES, cleanResults, imageBlock, checkImage } from '../lib/photo.js';
 import { triage, maxLevel, LEVELS, CONTACTS, CONTACTS_SELF } from '../public/js/triage.js';
 import { bank, bankText, facts, factNote, FACT_TOPICS } from '../public/js/knowledge-bank.js';
+import { nextQuestions, doctorSummary, summaryLines } from '../public/js/for-doctor.js';
 import { melbDay, liveNotes } from '../public/js/kimon-model.js';
 import { medsContext } from '../public/js/meds-model.js';
 import { MED_CATALOG, strengthsOf } from '../public/js/med-catalog.js';
@@ -63,6 +64,10 @@ export function patientContext(canon) {
     '## Recent logs and notes (oldest first)', rows((canon.notes || []).filter(n => n.by !== 'claude-test' && !routine.test(n.tag)), 20, n => `- ${String(n.tsUTC).slice(0, 10)} [${n.tag}] by ${n.by}: ${String(n.text).replace(/\n(RID|DATA):[\s\S]*$/, '')}`),
     '## Open questions for clinicians', rows((canon.questions || []).filter(q => q.status !== 'answered'), 20, q => `- ${q.id} (${q.askWhom}, p${q.priority}): ${q.question}`),
     '## Knowledge gaps', rows(canon.gaps, 20, g => `- ${g.id} [${g.status}] ${g.gap}. Closed by: ${g.whatAnswersIt}`),
+    '## His own numbers, as his doctor sees them ("For my doctor" in his app)', summaryLines(doctorSummary(canon)).map(l => `- ${l}`).join('\n'),
+    '## Best questions for his next doctor visit (worked out from gaps in his record; the same list is in his app under Health, For my doctor)',
+    rows(nextQuestions(canon), 8, q => `- [${q.topic}] "${q.ask}" Why: ${q.why}`),
+    'When he asks what to do next, or what to ask his doctor, start from this list in this order, and say he can tick "I asked this" in For my doctor. If his doctor\'s advice he reports is vague, say plainly what is still unknown and give the exact question that would settle it.',
     '## Knowledge bank (distilled from every entry since records began)', bankText(leffyBank(canon)),
   ].join('\n');
 }

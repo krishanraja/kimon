@@ -6,8 +6,8 @@
 // Pure: no DOM, no network. Browser, server and tests.
 import { noteData, noteSummary, melbDay, TAGS, tabletDays } from './kimon-model.js';
 import { MED_CATALOG } from './med-catalog.js';
-import { currentMeds } from './meds-model.js';
-import { bpSeries, fmtDate } from './metrics.js';
+import { currentMeds, dailyMeds } from './meds-model.js';
+import { bpSeries, fmtDate, parseDate } from './metrics.js';
 
 export const QUICK_TAG = 'quick-check';
 const DAY = 86400000;
@@ -35,9 +35,43 @@ export function answeredIds(canon = {}) {
   return new Set((canon.notes || []).filter(n => n.tag === QUICK_TAG).map(n => noteData(n)?.id).filter(Boolean));
 }
 
+const isoDay = v => { const p = parseDate(v); return p ? `${p.y}-${String(p.m + 1).padStart(2, '0')}-${String(p.d).padStart(2, '0')}` : ''; };
+// The newest answer to one question id, with when it was given.
+function lastAnswer(canon, id) {
+  const n = (canon.notes || []).filter(x => x.tag === QUICK_TAG && noteData(x)?.id === id).sort((a, b) => String(a.tsUTC).localeCompare(String(b.tsUTC))).pop();
+  return n ? { answer: noteData(n).answer, ts: n.tsUTC } : null;
+}
+
 export function quickChecks(canon = {}, now = new Date()) {
   const done = answeredIds(canon);
   const out = [];
+
+  // 0. An appointment date that has passed. Without this the record froze at
+  // a past appointment date with no result. Asked once per date; "still waiting"
+  // asks again a week later.
+  const appt = isoDay(canon.profile?.next_appointment);
+  // A result already in the record from that day on means the answer is in.
+  const resultIn = (canon.testResults || []).some(r => !/blood pressure/i.test(r.test) && isoDay(r.date) >= appt);
+  if (appt && appt < melbDay(now) && !resultIn) {
+    const id = `appt:${appt}`;
+    const last = lastAnswer(canon, id);
+    const waitedAWeek = last?.answer === 'waiting' && now.getTime() - new Date(last.ts).getTime() >= 7 * DAY;
+    if (!last || waitedAWeek) {
+      const gap = (canon.gaps || []).find(g => g.status !== 'closed' && /cardiolog/i.test(g.gap) && /appointment|date/i.test(g.gap));
+      out.push({
+        id, kind: 'appointment', title: 'Your appointment',
+        q: last ? `Have the results from ${fmtDate(appt)} come back yet?` : `Your appointment on ${fmtDate(appt)}: do you have the results?`,
+        opts: [
+          { k: 'results', label: 'Yes, I have them', then: 'photo', writes: gap ? [{ action: 'gap', payload: { id: gap.id, status: 'closed' } }] : [] },
+          { k: 'waiting', label: 'Still waiting for them', writes: [] },
+          // The deployed sheet refuses an empty value, so the answer itself is the
+          // record; the family sets the new date from his record screen.
+          { k: 'moved', label: 'It was moved', writes: [] },
+        ],
+      });
+    }
+  }
+
   const meds = currentMeds(canon);
   const listed = (canon.medications || []).filter(m => m.name);
 
@@ -124,7 +158,8 @@ export function quickChecks(canon = {}, now = new Date()) {
   }
 
   // 5. Days this week he saved a reading but did not tick his tablets.
-  if (meds.current.length) {
+  const daily = dailyMeds(canon);
+  if (daily.length) {
     const ticked = tabletDays(canon.notes || [], 'Kimon');
     // Days he already answered about, whatever he said, are never asked again.
     const askedDays = new Set([...done].filter(id => id.startsWith('tablets:')).flatMap(id => id.slice(8).split(',')));
@@ -139,7 +174,7 @@ export function quickChecks(canon = {}, now = new Date()) {
         id, kind: 'tablets', title: 'Tablets',
         q: `Your tablets were not ticked on ${names.length === 1 ? names[0] : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1]}. Did you take them?`,
         opts: [
-          { k: 'yes', label: days.length === 1 ? 'Yes, I took them' : 'Yes, every day', writes: [{ note: { tag: TAGS.meds, summary: 'MEDS: taken (ticked later)', data: { meds: meds.current.map(m => m.name), days, late: true } } }] },
+          { k: 'yes', label: days.length === 1 ? 'Yes, I took them' : 'Yes, every day', writes: [{ note: { tag: TAGS.meds, summary: 'MEDS: taken (ticked later)', data: { meds: daily.map(m => m.name), days, late: true } } }] },
           { k: 'some', label: 'I missed some', writes: [] },
           { k: 'unsure', label: "I'm not sure", writes: [] },
         ],
@@ -152,7 +187,8 @@ export function quickChecks(canon = {}, now = new Date()) {
 // At most one question a day, so it never feels like a form. None if he
 // has already answered one today (Melbourne). Tablets come first: the days
 // in question slip out of the week and out of his memory soonest.
-const FIRST = { tablets: 0, medicine: 1, record: 2 };
+// The appointment first: it is what the family and his doctor need most.
+const FIRST = { appointment: -1, tablets: 0, medicine: 1, record: 2 };
 export function todaysQuestion(canon = {}, now = new Date()) {
   const today = melbDay(now);
   if ((canon.notes || []).some(n => n.tag === QUICK_TAG && n.by === 'Kimon' && melbDay(n.tsUTC) === today)) return null;

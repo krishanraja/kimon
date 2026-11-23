@@ -9,6 +9,7 @@ import { resultsText } from '/js/speech.js';
 import { canRecord, startRecording, transcribeBlob } from '/js/recorder.js';
 import { mountChat, refreshChat, sendToChat, checkPending, stopSpeaking, photoToChat, showChat } from '/js/chat.js';
 import { person, matchPerson, CALL_OPTIONS } from '/js/people.js';
+import { doctorSummary, summaryLines, nextQuestions, appointment, apptLine } from '/js/for-doctor.js';
 
 /* ---------------- tiny helpers ---------------- */
 const $ = (s, el = document) => el.querySelector(s);
@@ -439,7 +440,7 @@ function briefText() {
   const sit = situation({ m, medications: c.medications, notes: c.notes });
   if (sit) L.push(sit, '');
   if (p.age) L.push(`Age ${p.age}${p.sex ? ', ' + p.sex : ''}`);
-  L.push(`Where things are: ${p.pathway_stage || 'Referred to cardiology (unconfirmed)'}. ${p.next_appointment ? 'Cardiology appointment ' + fmtDate(p.next_appointment, { year: true }) + '.' : 'No cardiology appointment date yet.'}`);
+  L.push(`Where things are: ${p.pathway_stage || 'Referred to cardiology (unconfirmed)'}. ${apptLine(appointment(c))}`);
   const rc = resultCards(m);
   if (rc.length) {
     L.push('', 'KEY RESULTS');
@@ -451,6 +452,11 @@ function briefText() {
       L.push(line);
     }
   }
+  // What he records himself, and the questions his record says to ask next.
+  // Medicines and the appointment have their own lines in this brief.
+  const sum = doctorSummary(c);
+  const own = summaryLines(sum).filter(l => !/^Medicines:/.test(l) && l !== apptLine(sum.appt));
+  if (own.length) { L.push('', 'FROM HIS OWN RECORDS'); own.forEach(l => L.push(`- ${l}`)); }
   const meds = currentMeds(c);
   L.push('', 'MEDICATIONS');
   meds.current.length ? meds.current.forEach(x => L.push(`- ${medLine(x)}`)) : L.push('- none confirmed');
@@ -466,7 +472,11 @@ function briefText() {
   const qs = c.questions || [];
   const ans = qs.filter(q => q.status === 'answered');
   if (ans.length) { L.push('', 'ANSWERS SO FAR'); ans.forEach(q => L.push(`- ${q.question} ${q.answer}`)); }
-  const q = qs.filter(x => x.status !== 'answered').sort((a, b) => (+a.priority || 9) - (+b.priority || 9));
+  const next = nextQuestions(c);
+  // A family question his own list already asks is not repeated.
+  const covered = new Set(next.flatMap(x => x.covers || []));
+  const q = qs.filter(x => x.status !== 'answered' && !covered.has(x.id)).sort((a, b) => (+a.priority || 9) - (+b.priority || 9));
+  if (next.length) { L.push('', 'QUESTIONS HE IS BRINGING (from gaps in his record)'); next.forEach((x, n) => L.push(`${n + 1}. ${x.ask}`)); }
   if (q.length) { L.push('', 'OUR QUESTIONS'); q.forEach((x, n) => L.push(`${n + 1}. ${x.question}`)); }
   return L.join('\n');
 }

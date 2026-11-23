@@ -127,7 +127,7 @@ export function bank(canon = {}, now = new Date()) {
   });
   const checks = (canon.checkins || []).slice(-6).map(c => c.verdict).filter(Boolean);
   const answered = (canon.questions || []).filter(q => q.status === 'answered' && q.answer).map(q => ({ q: q.question, a: q.answer }));
-  const foundOut = notes.filter(n => n.tag === 'found-out' || n.tag === 'quick-check').map(n => ({ ts: n.tsUTC, text: noteSummary(n).replace(/^(FOUND OUT[^:]*|QUICK CHECK):\s*/i, '') }));
+  const foundOut = notes.filter(n => n.tag === 'found-out' || n.tag === 'quick-check' || n.tag === 'doctor-asked' || n.tag === 'result-read').map(n => ({ ts: n.tsUTC, text: noteSummary(n).replace(/^(FOUND OUT[^:]*|QUICK CHECK):\s*/i, '') }));
   const said = notes.filter(n => n.tag === TAGS.talk).map(n => ({ ts: n.tsUTC, text: noteSummary(n).replace(/^KIMON SAYS:\s*/i, '') }));
   const concerns = notes.filter(n => n.tag === 'concern').map(n => ({ ts: n.tsUTC, text: (String(n.text).match(/^CONCERN:\s*([\s\S]*?)(?:\nURGENCY:|$)/) || [, ''])[1].trim() })).filter(c => c.text);
   const live = liveResults(canon.testResults || []);

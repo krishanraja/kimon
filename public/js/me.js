@@ -8,9 +8,12 @@ import { fmtDate, bpSeries, bpInsight, daysUntil } from './metrics.js';
 import { triage } from './triage.js';
 import { removalNote, liveNotes, REMOVABLE } from './kimon-model.js';
 import { SYMPTOMS, WHEN, SEVERITY, BODY_CHECK, TAGS, symptomLevel, checkLevel, noteText, melbDay, pendingNudge, tabletDays } from './kimon-model.js';
-import { currentMeds, medLine, needsCheck, CONFIRM_TAG, MED_CHECK_TAG } from './meds-model.js';
+import { currentMeds, dailyMeds, medLine, needsCheck, CONFIRM_TAG, MED_CHECK_TAG } from './meds-model.js';
 import { createOutbox, newOpId } from './outbox.js';
 import { todaysQuestion, quickNote } from './quick-checks.js';
+import { doctorSummary, nextQuestions, doctorText, apptLine, ASKED_TAG, RESULT_TAG } from './for-doctor.js';
+import { showWhatsNew } from './whats-new.js';
+import { leffySvg } from './leffy.js';
 import { MED_CATALOG, MED_WHEN, NOT_SURE, strengthsOf, inCatalog } from './med-catalog.js';
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -132,6 +135,8 @@ const P = {
   phoneoff: '<rect x="7" y="3" width="10" height="18" rx="2.5"/><path d="M11 17.5h2"/>',
   mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
   alert: '<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17h.01"/>',
+  x: '<path d="M6 6l12 12M18 6L6 18"/>',
+  doctor: '<path d="M6 3.5v4.5a4 4 0 0 0 8 0V3.5"/><path d="M10 12v3a4 4 0 0 0 8 0v-1.5"/><circle cx="18" cy="11.5" r="2"/>',
   leffy: '<path d="M10 3l1.6 4.4L16 9l-4.4 1.6L10 15l-1.6-4.4L4 9l4.4-1.6zM18 13l.9 2.1L21 16l-2.1.9L18 19l-.9-2.1L15 16l2.1-.9z"/>',
 };
 const ic = (id, cls = '') => `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true">${P[id] || ''}</svg>`;
@@ -179,6 +184,9 @@ function fits(rowVar, other) {
 }
 
 /* ---------- Today ---------- */
+let ticking = false;
+// "Aspirin (low dose)" -> "Aspirin"; "Vitamin D (colecalciferol)" -> "Vitamin D".
+const shortName = n => String(n || '').replace(/\s*\(.*?\)\s*/g, ' ').trim();
 function readings() { return bpSeries((canon?.testResults) || []).readings; }
 function tabletsDays() { return tabletDays(canon?.notes || [], 'Kimon'); }
 
@@ -206,8 +214,11 @@ function todayState() {
   const latest = todays[0] || null;
   const waiting = outbox.pending();
   const meds = currentMeds(canon || {});
+  const daily = dailyMeds(canon || {});
   const took = tabletsDays().has(t);
-  return { latest, last: rs[0] || null, waiting, meds, took, nudge: canon ? pendingNudge(canon) : null };
+  // Nothing to tick when every listed medicine is for a test or "when needed".
+  const toTick = daily.length > 0;
+  return { latest, last: rs[0] || null, waiting, meds, daily, toTick, took, nudge: canon ? pendingNudge(canon) : null };
 }
 
 function todayScreen() {
@@ -220,11 +231,13 @@ function todayScreen() {
     ? `<b class="num">${r.sys} / ${r.dia}<em>mmHg</em></b>${rStatus === 'wait' ? '<small class="wait">Waiting to send</small>' : `<small>Measured ${esc(timeOf(r.at))}</small>`}`
     : s.last ? `<b class="dim">Blood pressure</b><small>Last: ${s.last.sys}/${s.last.dia}, ${esc(whenLabel(s.last.at))}</small>` : `<b class="dim">Blood pressure</b><small>${rec === 'none' ? 'Past readings not loaded' : 'No readings yet'}</small>`;
   const bpChip = r ? (rStatus === 'wait' ? chip('wait', 'On phone', 'phoneoff') : chip('ok', 'Saved', 'check')) : chip('todo', 'To do');
-  const nMeds = s.meds.current.length;
+  // Name exactly what one tap records, so the tick is never a guess.
+  const names = s.daily.map(m => shortName(m.name)).join(', ');
   const tb = rec === 'none' ? '<b class="dim">Today\'s tablets</b><small>Medicines not loaded</small>'
-    : !nMeds && s.meds.empty ? '<b class="dim">Today\'s tablets</b><small>No medicines listed yet</small>'
-    : s.took ? '<b>Today\'s tablets</b><small>Ticked today</small>' : `<b>Today's tablets</b><small>${nMeds ? `${nMeds} medicine${nMeds === 1 ? '' : 's'} on your list` : 'Check your list'}</small>`;
-  const tbChip = rec === 'none' ? chip('none', 'Not loaded') : s.meds.empty ? chip('none', 'None') : s.took ? chip('ok', 'Taken', 'check') : chip('todo', 'To do');
+    : s.meds.empty ? '<b class="dim">Today\'s tablets</b><small>No medicines listed yet</small>'
+    : !s.toTick ? '<b class="dim">Today\'s tablets</b><small>None to take every day</small>'
+    : s.took ? '<b>Today\'s tablets</b><small>Ticked today</small>' : `<b>Today's tablets</b><small>${esc(names)}</small>`;
+  const tbChip = rec === 'none' ? chip('none', 'Not loaded') : s.meds.empty || !s.toTick ? chip('none', 'None') : s.took ? chip('ok', 'Taken', 'check') : chip('todo', 'To do');
   // What he sent today stays visible with its real status; a newer family
   // message takes the row first.
   const sentToday = (canon?.notes || []).filter(x => x.tag === TAGS.talk && x.by === 'Kimon' && melbDay(x.tsUTC) === today()).pop();
@@ -234,7 +247,7 @@ function todayScreen() {
     : sentToday ? `<b>You sent</b><small>“${esc(String(sentToday.text).replace(/^KIMON SAYS:\s*/, ''))}”</small>`
       : '<b>Tell the family</b><small>How you are, or just hello</small>';
   const famChip = s.nudge ? chip('time', timeOf(s.nudge.ts)) : sentToday ? (sentWaiting ? chip('wait', 'On phone', 'phoneoff') : chip('ok', 'Sent', 'check')) : ic('chev', 's16 chev');
-  const left = [!r, !s.meds.empty && !s.took].filter(Boolean).length;
+  const left = [!r, s.toTick && !s.took].filter(Boolean).length;
   // One status line, most important first. Fixed slot; nothing else moves.
   const head = !storageOk ? '<span class="stale">Not kept on this phone</span>'
     : rec === 'none' ? '<span class="stale">Your record did not load</span>'
@@ -246,7 +259,7 @@ function todayScreen() {
   let act;
   if (s.waiting.length) act = primary(`Send ${s.waiting.length === 1 ? 'it' : 'them'} now`, 'send', 'data-flush');
   else if (!r) act = primary("Add today's reading", 'plus', 'data-add');
-  else if (!s.meds.empty && !s.took) act = primary("I took today's tablets", 'check', 'data-took');
+  else if (s.toTick && !s.took) act = primary("I took today's tablets", 'check', 'data-took');
   // Today's things done: a few one-tap questions, if any, and not skipped today.
   else if (quickDue()) act = primary('One quick question', 'q', 'data-quick');
   else act = primary('Add another reading', 'plus', 'data-add');
@@ -269,22 +282,28 @@ function todayScreen() {
   on('[data-add]', () => bpEntry());
   on('[data-quick]', () => quickFlow());
   on('[data-readings]', () => readingsScreen(() => todayScreen()));
-  const tick = async b => {
-    if (b) b.disabled = true;
-    const st = await note(TAGS.meds, 'MEDS: taken', { meds: s.meds.current.map(m => m.name) });
+  // The row and the button both tick: one shared guard, so a double tap
+  // (or one tap on each) saves one row, not two.
+  const tick = async () => {
+    if (ticking || s.took) return;
+    ticking = true;
+    app.querySelectorAll('[data-meds],[data-took]').forEach(x => { x.disabled = true; });
+    let st;
+    try { st = await note(TAGS.meds, 'MEDS: taken', { meds: s.daily.map(m => m.name) }); } finally { ticking = false; }
     todayScreen();
-    toast(st === 'saved' ? 'Ticked. Saved.' : st === 'unsafe' ? 'Not saved. Keep the app open and try again.' : 'Ticked. Waiting to send.');
+    const what = (n => n.length > 1 ? n.slice(0, -1).join(', ') + ' and ' + n[n.length - 1] : n[0])(s.daily.map(m => shortName(m.name)));
+    toast(st === 'saved' ? `Ticked ${what}. Saved.` : st === 'unsafe' ? 'Not saved. Keep the app open and try again.' : `Ticked ${what}. Waiting to send.`, 4200);
   };
   // While today's tablets are still to do, the row ticks them, the same as
   // the button. Once ticked, it opens the list.
-  on('[data-meds]', () => (rec !== 'none' && s.meds.current.length && !s.took ? tick($('[data-meds]')) : medsScreen()));
+  on('[data-meds]', () => (rec !== 'none' && s.toTick && !s.took ? tick() : medsScreen()));
   on('[data-talk]', () => talk());
   on('[data-flush]', async () => {
     const b = $('[data-flush]'); b.disabled = true; b.lastChild.textContent = 'Sending…';
     const res = await flush(); await load(); todayScreen();
     if (res.left) toast('Still offline. It stays on this phone and sends by itself.');
   });
-  on('[data-took]', () => tick($('[data-took]')));
+  on('[data-took]', () => tick());
 }
 
 /* ---------- blood pressure entry ---------- */
@@ -483,20 +502,99 @@ function healthScreen() {
   const lastCheck = (canon?.notes || []).filter(n => n.tag === TAGS.check).map(n => n.tsUTC).sort().pop();
   const checkDue = !lastCheck || Date.now() - new Date(lastCheck).getTime() > 6 * 86400000;
   const all = readings();
+  const nq = canon ? nextQuestions(canon).length : 0;
   frame({
     eyebrow: recordState() === 'none' ? 'Not loaded' : recordState() === 'copy' ? `Copy from ${timeOf(loadedAt)}` : '', title: 'Health', tabId: 'health',
-    body: `<section class="j-card j-chart" aria-label="Blood pressure, last 30 days">
-        <div class="j-chart-h"><b>Blood pressure</b><span>Last 30 days</span></div>${chart}</section>
+    body: `<section class="j-card j-chart tap" data-readings role="button" tabindex="0" aria-label="Blood pressure, last 30 days. Open all ${all.length} readings">
+        <div class="j-chart-h"><b>Blood pressure</b><span>${all.length ? `All ${all.length} readings` : 'Last 30 days'}${ic('chev', 's16')}</span></div>${chart}</section>
       <section class="j-card j-page">
-        <button class="j-row short" data-readings><span class="j-ic bp">${ic('list', 's20')}</span><span class="j-tx"><b>All my readings</b><small>${all.length ? `${all.length} saved · tap one to fix it` : 'None yet'}</small></span>${ic('chev', 's16 chev')}</button>
+        <button class="j-row short" data-doctor><span class="j-ic bp">${ic('doctor', 's20')}</span><span class="j-tx"><b>For my doctor</b><small>${nq ? `${nq} question${nq === 1 ? '' : 's'} to ask, and your numbers` : 'Your numbers on one page'}</small></span>${ic('chev', 's16 chev')}</button>
         <button class="j-row short" data-photo><span class="j-ic tabl">${ic('cam', 's20')}</span><span class="j-tx"><b>Photo of a result</b><small>Test, scan, letter or monitor</small></span>${ic('chev', 's16 chev')}</button>
         <button class="j-row short" data-feel><span class="j-ic unsure">${ic('body', 's20')}</span><span class="j-tx"><b>How I'm feeling</b><small>${checkDue ? 'Check-in due · or note a symptom' : 'Check-in or a symptom'}</small></span>${ic('chev', 's16 chev')}</button>
         <a class="j-row short" href="/?full=1"><span class="j-ic fam">${ic('record', 's20')}</span><span class="j-tx"><b>Full record and Leffy</b><small>Results, questions, chat</small></span>${ic('chev', 's16 chev')}</a>
       </section>`,
   });
   on('[data-readings]', () => readingsScreen(() => healthScreen()));
+  $('[data-readings]')?.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); readingsScreen(() => healthScreen()); } });
+  on('[data-doctor]', () => doctorScreen());
   on('[data-photo]', () => photoResult());
   on('[data-feel]', () => feelingScreen());
+}
+
+/* ---------- For my doctor ---------- */
+// His own numbers, and the questions worth asking next, worked out from his
+// record (for-doctor.js). One page; questions page instead of scrolling.
+function doctorScreen(page = 0, perPage = null) {
+  app.dataset.tabroot = '';
+  const c = canon || {};
+  const s = doctorSummary(c), qs = nextQuestions(c);
+  const nums = [
+    s.bp ? ['Blood pressure', `${s.bp.sys}/${s.bp.dia}`, `${s.bp.n} readings`] : null,
+    s.tablets ? ['Tablets', `${s.tablets.yes} of ${s.tablets.of}`, 'days ticked'] : null,
+  ].filter(Boolean);
+  // Show every question if they fit; page only when the screen would scroll.
+  const per = perPage ?? qs.length, start = page * per;
+  const shown = qs.slice(start, start + per);
+  frame({
+    eyebrow: 'From your own records', title: 'For my doctor', tabId: 'health', back: () => healthScreen(),
+    body: `${nums.length ? `<button class="j-card j-nums" data-nums aria-label="See everything your doctor gets">${nums.map(n => `<span><small>${esc(n[0])}</small><b class="num">${esc(n[1])}</b><small>${esc(n[2])}</small></span>`).join('')}${ic('chev', 's16 chev')}</button>` : ''}
+      ${qs.length ? `<div class="j-sec">Questions to ask</div><section class="j-card j-page">${shown.map((q, i) => `<button class="j-row short" data-q="${start + i}"><span class="j-ic unsure">${ic('q', 's20')}</span><span class="j-tx"><b>${esc(q.topic)}</b><small>${esc(q.ask)}</small></span>${ic('chev', 's16 chev')}</button>`).join('')}</section>
+      ${qs.length > per ? `<div class="j-foot"><span>${start + 1}–${Math.min(qs.length, start + per)} of ${qs.length}</span><span>${page > 0 ? '<button data-prev>Back</button>' : ''}${start + per < qs.length ? ' <button data-next>More</button>' : ''}</span></div>` : ''}`
+      : '<p class="j-note">No open questions in your record right now.</p>'}`,
+    act: primary('Share with my doctor', 'send', 'data-share'),
+  });
+  if (perPage === null && qs.length > 1) {
+    const main = $('.j-main'), over = main.scrollHeight - main.clientHeight;
+    if (over > 1) {
+      const rowH = $('[data-q]')?.getBoundingClientRect().height || px('--row-s');
+      const fit = Math.max(1, qs.length - Math.ceil((over + 52) / rowH)); // 52: the page footer
+      return doctorScreen(page, fit);
+    }
+  }
+  on('[data-nums]', () => doctorNumbers());
+  onAll('[data-q]', b => questionScreen(qs[+b.dataset.q], page, perPage));
+  on('[data-prev]', () => doctorScreen(page - 1, per));
+  on('[data-next]', () => doctorScreen(page + 1, per));
+  on('[data-share]', () => shareDoctor());
+}
+function doctorNumbers() {
+  const s = doctorSummary(canon || {});
+  const rows = [
+    s.bp && ['Blood pressure at home', `${s.bp.sys}/${s.bp.dia} average`, `${s.bp.n} readings on ${s.bp.days} days since ${fmtDate(s.bp.from)}`],
+    s.sinceChange && s.sinceChange.before && [`Since ${String(s.sinceChange.name).replace(/\s*\(.*?\)/, '')} stopped`, `${s.sinceChange.after.sys}/${s.sinceChange.after.dia} average`, `${s.sinceChange.after.n} readings${s.sinceChange.before ? `, ${s.sinceChange.before.sys}/${s.sinceChange.before.dia} before` : ''}`],
+    s.tablets && ['Daily tablets', `${s.tablets.yes} of ${s.tablets.of} days`, `ticked since ${fmtDate(s.tablets.from)}`],
+    s.checks.length && ['Weekly check-in', s.checks[s.checks.length - 1].clear ? 'No symptoms' : 'Something noted', `last on ${fmtDate(s.checks[s.checks.length - 1].day)}`],
+    ['Appointment', apptLine(s.appt).replace(/\.$/, ''), ''],
+  ].filter(Boolean);
+  frame({
+    eyebrow: 'What your doctor gets', title: 'Your numbers', tabId: 'health', back: () => doctorScreen(),
+    body: `<section class="j-card j-facts">${rows.map(r => `<div><small>${esc(r[0])}</small><b>${esc(r[1])}</b>${r[2] ? `<small>${esc(r[2])}</small>` : ''}</div>`).join('')}</section>`,
+    act: primary('Share with my doctor', 'send', 'data-share'),
+  });
+  on('[data-share]', () => shareDoctor());
+}
+function questionScreen(q, page, perPage = null) {
+  if (!q) return doctorScreen(page, perPage);
+  frame({
+    title: q.topic, tabId: 'health', back: () => doctorScreen(page, perPage),
+    body: `<p class="j-q">“${esc(q.ask)}”</p><section class="j-card j-why"><b>Why it matters</b><p>${esc(q.why)}</p></section>`,
+    act: `${link('Not yet', 'data-later')}${primary('I asked this', 'check', 'data-asked')}`,
+  });
+  on('[data-later]', () => doctorScreen(page, perPage));
+  let busy = false;
+  on('[data-asked]', async () => {
+    if (busy) return; busy = true;
+    const st = await note(ASKED_TAG, `Asked the doctor: ${q.ask}`, { id: q.id });
+    doctorScreen();
+    toast(st === 'saved' ? 'Marked as asked. Tell Leffy or your family what they said.' : 'Marked. Waiting to send.');
+  });
+}
+async function shareDoctor() {
+  const text = doctorText(canon || {});
+  try {
+    if (navigator.share) { await navigator.share({ title: 'For my doctor', text }); return; }
+    await navigator.clipboard.writeText(text); toast('Copied. Paste it into a message or email.');
+  } catch (e) { if (e?.name !== 'AbortError') toast('Could not share from this phone.'); }
 }
 
 /* ---------- Medicines ---------- */
@@ -665,6 +763,7 @@ function applyLocal(action, p) {
   }
   if (action === 'gap') { const g = (canon.gaps || []).find(x => x.id === p.id); if (g) g.status = p.status; }
   if (action === 'question') { const q = (canon.questions || []).find(x => x.id === p.id); if (q) Object.assign(q, { status: p.status, answer: p.answer }); }
+  if (action === 'profile') (canon.profile ||= {})[p.key] = p.value;
   store.set('canon', canon);
 }
 // One question a day. Answering it, or skipping, returns to Today.
@@ -691,9 +790,22 @@ function quickFlow() {
     }
     const n = quickNote(c, o);
     const st = await note(n.tag, n.summary, n.data);
+    // "I have the results": straight to the photo, so the result is in his record.
+    if (o.then === 'photo') return resultsNext(st);
     todayScreen();
     toast(st === 'saved' ? 'Thanks. Your family and Leffy can see it.' : 'Thanks. Waiting to send.');
   });
+}
+
+// After "Yes, I have them": one calm step to put them in his record.
+function resultsNext(st) {
+  frame({
+    eyebrow: st === 'saved' ? 'Saved' : 'Waiting to send', title: 'Your results', tabId: 'today',
+    body: `<p class="j-q">Take a photo of the letter or report. It goes into your record for your family and Leffy.</p>`,
+    act: `${link('Later', 'data-later')}${primary('Photo of the results', 'cam', 'data-photo')}`,
+  });
+  on('[data-later]', () => todayScreen());
+  on('[data-photo]', () => photoResult());
 }
 
 /* ---------- urgent help: the existing red-flag rules ---------- */
@@ -863,45 +975,80 @@ function talk() {
 }
 
 /* ---------- photo of a result ---------- */
+// Upload with real progress: XHR reports the bytes sent, so the steps show
+// what is actually happening, not a timer.
+function postPhoto(body, onSent) {
+  return new Promise((resolve, reject) => {
+    const x = new XMLHttpRequest();
+    x.open('POST', '/api/photo'); x.withCredentials = true; x.timeout = 70000;
+    x.setRequestHeader('content-type', 'application/json');
+    x.upload.onprogress = e => { if (e.lengthComputable) onSent(e.loaded / e.total); };
+    x.upload.onload = () => onSent(1);
+    x.onload = () => { let j = {}; try { j = JSON.parse(x.responseText); } catch { /* not JSON */ } resolve({ status: x.status, ok: x.status >= 200 && x.status < 300, json: j }); };
+    x.onerror = () => reject(new Error(''));
+    x.ontimeout = () => reject(new Error('That took too long. Try again.'));
+    x.send(body);
+  });
+}
+const lf = () => `<span class="j-leffy" aria-hidden="true">${leffySvg()}</span>`;
+
 async function photoResult() {
   const file = await pickPhoto({ camera: true });
   if (!file) return;
-  let img, out, tick = 0;
-  // The photo he took, and a calm, honest progress line while it is read.
-  const STEPS = ['Reading the page', 'Finding the results', 'Checking your record'];
+  let img;
+  const STEPS = ['Sending your photo', 'Reading the page', 'Checking your record'];
   const reading = () => frame({
-    eyebrow: 'Photo of a result', title: 'Reading', tabId: 'health', back: () => { clearInterval(tick); healthScreen(); },
+    title: 'Reading', tabId: 'health', back: () => healthScreen(),
     body: `<section class="j-card j-reading">${img?.thumb ? `<img src="${img.thumb}" alt="Your photo">` : '<div class="j-reading-ph"></div>'}<div class="j-scan" aria-hidden="true"></div></section>
-      <div class="j-steps" role="status">${STEPS.map((t, i) => `<div class="j-step-line" data-st="${i}"><span class="j-tick"></span>${t}</div>`).join('')}</div>`,
+      <div class="j-steps" role="status" aria-live="polite">${STEPS.map((t, i) => `<div class="j-step-line" data-st="${i}"><span class="j-tick"></span><span>${t}</span><em data-pc="${i}"></em></div>`).join('')}</div>`,
   });
   const mark = n => app.querySelectorAll('[data-st]').forEach(el => { const i = +el.dataset.st; el.classList.toggle('done', i < n); el.classList.toggle('now', i === n); });
+  let out;
   try {
     img = await shrink(file);
-    reading(); let n = 0; mark(0);
-    tick = setInterval(() => { if (n < STEPS.length - 1) mark(++n); }, 2600);
-    const r = await fetch('/api/photo', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ image: { data: img.data, type: img.type } }), signal: AbortSignal.timeout(70000) });
+    reading(); mark(0);
+    const r = await postPhoto(JSON.stringify({ image: { data: img.data, type: img.type } }), f => {
+      const pc = $('[data-pc="0"]'); if (pc) pc.textContent = f < 1 ? `${Math.round(f * 100)}%` : '';
+      if (f >= 1) mark(1);
+    });
     if (r.status === 401) return toLogin();
-    out = await r.json().catch(() => ({}));
+    out = r.json || {};
     if (!r.ok || !out.ok) throw new Error(out.error || '');
-    clearInterval(tick);
+    mark(2); await new Promise(res => setTimeout(res, 450)); mark(3);
   } catch (e) {
-    clearInterval(tick);
-    frame({ eyebrow: 'Photo of a result', title: 'Photo', tabId: 'health', back: () => healthScreen(), body: `<p class="j-note">Couldn't read that. ${esc(e.message || 'Try again in good light, with the whole page in the photo.')}</p>`, act: primary('Take it again', 'cam', 'data-again') });
+    frame({ title: 'Photo', tabId: 'health', back: () => healthScreen(), body: `<p class="j-note">Couldn't read that. ${esc(e.message || 'Try again in good light, with the whole page in the photo.')}</p>`, act: primary('Take it again', 'cam', 'data-again') });
     return on('[data-again]', photoResult);
   }
+  const readId = newOpId();
   const rows = out.results || [];
   const fresh = rows.map((x, i) => ({ ...x, i })).filter(x => !x.duplicate);
-  let page = 0; const per = 4;
   const picked = new Set(fresh.map(x => x.i));
+  const leffyCard = (cls = '') => (out.summary || out.meaning) ? `<section class="j-card j-lcard ${cls}">${lf()}<div><b>${esc(out.summary || 'Your result')}</b>${out.meaning ? `<p>${esc(out.meaning)}</p>` : ''}</div></section>` : '';
+  // Pages: row index ranges, measured from each row's real height on first draw.
+  let page = 0, pages = null;
   const draw = () => {
-    const shown = rows.slice(page * per, page * per + per);
+    const [start, end] = pages ? pages[page] : [0, rows.length], n = end - start;
+    const shown = rows.slice(start, start + n);
     frame({
-      eyebrow: out.summary || 'Photo of a result', title: !rows.length ? 'No results' : fresh.length ? 'Check' : 'Saved', tabId: 'health', back: () => healthScreen(),
-      body: rows.length ? `<section class="j-card">${shown.map(x => { const k = rows.indexOf(x); return `<label class="j-check ${x.duplicate ? 'dup' : ''}"><input type="checkbox" data-r="${k}" ${x.duplicate ? 'disabled' : picked.has(k) ? 'checked' : ''}><span><b>${esc(x.test)}: ${esc(x.result)}</b><small>${esc(fmtDate(x.date, { year: true }) || x.date)}${x.duplicate ? ' · already saved' : x.dateGuessed ? ' · no date on the paper' : ''}</small></span></label>`; }).join('')}</section>
-        <div class="j-foot"><span>${out.unreadable ? `Couldn't read: ${esc(out.unreadable)}` : 'Untick anything that is wrong'}</span><span>${page > 0 ? '<button data-prev>Back</button>' : ''}${(page + 1) * per < rows.length ? ' <button data-next>More</button>' : ''}</span></div>`
-        : '<p class="j-note">Nothing on that photo looked like a test result.</p>',
+      title: !rows.length ? 'No results' : fresh.length ? 'Check' : 'Already saved', tabId: 'health', back: () => healthScreen(),
+      body: `${leffyCard('tight')}${rows.length ? `<section class="j-card">${shown.map(x => { const k = rows.indexOf(x); return `<label class="j-check ${x.duplicate ? 'dup' : ''}"><input type="checkbox" data-r="${k}" ${x.duplicate ? 'disabled' : picked.has(k) ? 'checked' : ''}><span><b>${esc(x.test)}: ${esc(x.result)}</b><small>${esc(fmtDate(x.date, { year: true }) || x.date)}${x.duplicate ? ' · already saved' : x.dateGuessed ? ' · no date on the paper' : ''}</small></span></label>`; }).join('')}</section>
+        <div class="j-foot"><span>${out.unreadable ? `Couldn't read: ${esc(out.unreadable)}` : fresh.length ? 'Untick anything that is wrong' : 'Nothing new to save'}</span><span>${page > 0 ? '<button data-prev>Back</button>' : ''}${pages && page < pages.length - 1 ? ' <button data-next>More</button>' : ''}</span></div>`
+        : '<p class="j-note">Nothing on that photo looked like a test result.</p>'}`,
       act: fresh.length ? primary(`Save ${picked.size} to my record`, 'check', `data-save ${picked.size ? '' : 'disabled'}`) : primary('Take another photo', 'cam', 'data-again'),
     });
+    // Never scroll: if every row does not fit, page them by real row height.
+    if (!pages && rows.length > 1) {
+      const main = $('.j-main'), over = main.scrollHeight - main.clientHeight;
+      if (over > 1) {
+        const hs = [...app.querySelectorAll('.j-check')].map(el => el.getBoundingClientRect().height);
+        const room = hs.reduce((a, h) => a + h, 0) - over;
+        pages = []; let from = 0, used = 0;
+        hs.forEach((h, i) => { if (i > from && used + h > room) { pages.push([from, i]); from = i; used = 0; } used += h; });
+        pages.push([from, hs.length]);
+        return draw();
+      }
+      pages = [[0, rows.length]];
+    }
     app.querySelectorAll('[data-r]').forEach(c => c.onchange = () => { c.checked ? picked.add(+c.dataset.r) : picked.delete(+c.dataset.r); draw(); });
     on('[data-prev]', () => { page--; draw(); });
     on('[data-next]', () => { page++; draw(); });
@@ -909,22 +1056,50 @@ async function photoResult() {
     let busy = false;
     on('[data-save]', async () => {
       if (busy) return; busy = true;
-      const picks = [...picked].map(k => rows[k]);
+      const picks = [...picked].sort((a, b) => a - b).map(k => ({ k, x: rows[k] }));
       const sts = [];
-      for (const x of picks) {
+      // Each write carries an id made from this read, so a retry never doubles a row.
+      for (const { k, x } of picks) {
         ((canon ||= {}).testResults ||= []).push({ date: x.date, test: x.test, result: x.result, lab: x.lab, notes: x.notes, source: 'Kimon', local: true });
-        sts.push(await send('testResult', { date: x.date, test: x.test, result: x.result, lab: x.lab, notes: x.notes }));
+        sts.push(await send('testResult', { date: x.date, test: x.test, result: x.result, lab: x.lab, notes: x.notes }, `photo-${readId}-${k}`));
+      }
+      // What Leffy told him goes in the record too, for the family and Leffy.
+      if (out.meaning) {
+        const data = { summary: out.summary, meaning: out.meaning, askNext: out.askNext || '', urgency: out.urgency || 'routine', tests: picks.map(p => p.x.test) };
+        const text = noteText(`Photo of a result: ${out.summary || picks.map(p => p.x.test).join(', ')} Leffy: ${out.meaning}`, data);
+        addNoteLocal(RESULT_TAG, text);
+        sts.push(await send('note', { text, tag: RESULT_TAG }, `photo-${readId}-note`));
       }
       store.set('canon', canon);
-      const allSaved = sts.every(s => s === 'saved');
-      healthScreen();
-      toast(allSaved ? `Saved ${picks.length} result${picks.length === 1 ? '' : 's'}. Your family can see ${picks.length === 1 ? 'it' : 'them'}.` : "Kept on this phone. They send when you're online.");
+      photoSaved(out, picks.map(p => p.x), sts.every(s => s === 'saved') ? 'saved' : sts.includes('unsafe') ? 'unsafe' : 'queued');
     });
   };
   draw();
 }
+// After saving: what was saved, what it means, and what to ask next.
+function photoSaved(out, saved, st) {
+  if (out.urgency === 'emergency') return result('emergency');
+  const ok = st === 'saved';
+  const flag = { urgent: ['Talk to your doctor about this today', 'Call your cardiologist\'s rooms or your GP today and go over this report.'], soon: ['Go over this with your doctor soon', 'Ask your cardiologist or GP about this report this week.'] }[out.urgency];
+  const names = saved.map(x => x.test);
+  const what = `${saved.length} result${saved.length === 1 ? '' : 's'} saved: ${names.slice(0, 3).join(', ')}${names.length > 3 ? '…' : ''}`;
+  frame({
+    eyebrow: 'Photo of a result', title: ok ? 'Saved' : 'On this phone', tabId: 'health',
+    body: `<section class="j-card j-done"><span class="seal ${ok ? '' : 'wait'}">${ic(ok ? 'check' : 'phoneoff')}</span><div><b>${ok ? 'In your record' : "Kept on this phone. It sends by itself when you're online."}</b><small>${esc(what)}</small></div></section>
+      ${out.meaning || flag ? `<section class="j-card j-lcard">${lf()}<div><b>What it means</b>${out.meaning ? `<p>${esc(out.meaning)}</p>` : ''}${flag ? `<p class="j-flag ${out.urgency}"><b>${esc(flag[0])}.</b> ${esc(flag[1])}</p>` : ''}</div></section>` : ''}
+      ${out.askNext ? `<button class="j-card j-row short" data-ask><span class="j-ic unsure">${ic('q', 's20')}</span><span class="j-tx"><b>Ask your doctor</b><small>${esc(out.askNext)}</small></span>${ic('chev', 's16 chev')}</button>` : ''}`,
+    act: `${link('Ask Leffy more', 'data-leffy')}${primary('Done', 'check', 'data-done')}`,
+  });
+  // Never scroll: on a short screen, Leffy's words are trimmed to fit (the
+  // full text is in his record and in Ask Leffy).
+  const main = $('.j-main');
+  if (main.scrollHeight > main.clientHeight + 1) main.classList.add('tight');
+  if (main.scrollHeight > main.clientHeight + 1) main.classList.add('tighter');
+  on('[data-done]', () => healthScreen());
+  on('[data-ask]', () => doctorScreen());
+  on('[data-leffy]', () => location.assign('/?full=1&leffy=1'));
+}
 
-/* ---------- voice ---------- */
 function wireMic(btn, ta) {
   if (!btn) return;
   if (!canRecord()) { btn.hidden = true; return; }
@@ -991,5 +1166,14 @@ if (window.visualViewport) {
   if (!canon) canon = { notes: [], profile: {} };
   // Refresh, but never pull him out of something he's doing.
   if (app.dataset.tabroot === '1' || app.querySelector('.j-loading')) current();
+  // Once, after a change he would notice: what's new. Only on his own home
+  // screens, never over an urgent screen, and not on a brand-new phone.
+  if (app.dataset.tabroot === '1' && !document.body.classList.contains('preview')) {
+    showWhatsNew({
+      storage: ls, icon: id => ic(id, 's20'),
+      hasHistory: readings().length > 0 || (canon?.notes || []).some(n => n.by === 'Kimon'),
+      onAction: a => { if (a === 'doctor') doctorScreen(); if (a === 'photo') healthScreen(); },
+    });
+  }
 })();
 

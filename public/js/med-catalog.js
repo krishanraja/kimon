@@ -32,6 +32,9 @@ export const MED_CATALOG = [
   ['Telmisartan', ['40 mg', '80 mg']],
   ['Vitamin D (colecalciferol)', ['1000 IU']],
 ];
+// Times that mean "not every day": never ticked as a daily tablet, and a
+// change to one is not a medicine change for blood pressure comparisons.
+export const NOT_DAILY = ['When needed', 'Short course', 'Before a test or procedure'];
 export const MED_WHEN = ['Morning', 'Midday', 'Evening', 'Night', 'Morning and evening', 'When needed', 'Short course', 'Before a test or procedure'];
 export const NOT_SURE = 'Not sure';
 
