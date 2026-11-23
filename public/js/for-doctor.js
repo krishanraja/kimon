@@ -111,6 +111,12 @@ export function nextQuestions(canon = {}, now = new Date()) {
   const a = appointment(canon, now);
   const out = [];
   const vessels = m.cac?.vessels || {};
+  // A specialist's review in his record (a letter or report) answers some
+  // questions outright; those are not asked again.
+  const reviews = (canon.testResults || []).filter(r => /review|letter/i.test(r.test) && /cardiolog|review/i.test(`${r.test} ${r.lab}`));
+  const reviewText = reviews.map(r => r.result).join(' ');
+  const reviewDay = reviews.map(r => iso(r.date)).sort().pop() || '';
+  const diagnosis = (reviewText.match(/\b(non-obstructive coronary artery disease|obstructive coronary artery disease|coronary artery disease)\b/i) || [])[1] || '';
   const where = ['LM', 'LAD'].filter(k => vessels[k]).map(k => `${k === 'LM' ? 'left main' : 'LAD'} (${Math.round(vessels[k])})`);
 
   // 1. The angiogram result: the one test that says whether an artery is narrowed.
@@ -128,20 +134,27 @@ export function nextQuestions(canon = {}, now = new Date()) {
     const before = !started || iso(m.ldl.date) < started;
     if (before || (target && m.ldl.value > target)) {
       out.push({ id: 'ldl', topic: 'Cholesterol',
-        ask: `${target ? `My LDL goal is under ${target}. ` : ''}It was ${m.ldl.value} on ${fmtDate(m.ldl.date)}, before ${short(statin.name)}${statin.dose ? ' ' + statin.dose : ''}. When is it re-checked, and if it is still ${target ? `above ${target}` : 'high'}, what is the next step?`,
+        ask: `${target ? `My LDL goal is under ${target}. ` : ''}It was ${m.ldl.value} on ${fmtDate(m.ldl.date)}, before ${short(statin.name)}${statin.dose ? ` (now ${statin.dose})` : ''}. When is it re-checked, and if it is still ${target ? `above ${target}` : 'high'}, what is the next step?`,
         why: 'Each 1 mmol/L lower LDL cuts major heart events by about a fifth. A blood test is the only way to know the tablet is doing enough; if not, doctors usually raise the dose or add ezetimibe.' });
     }
   }
   // 3. Which kind of heart care he is getting: sets the goal and the aspirin question.
-  if (m.cac && m.cac.value >= 100) {
-    const aspirin = meds.find(x => /aspirin/i.test(x.name));
+  const aspirin = meds.find(x => /aspirin/i.test(x.name));
+  if (diagnosis && aspirin) {
+    // The kind of care is settled; only the aspirin reason may still be missing.
+    out.push({ id: 'aspirin', topic: 'Aspirin',
+      ask: `My cardiologist says I have ${diagnosis.toLowerCase()}. Why is daily aspirin right for me, and should I keep taking it?`,
+      why: 'Aspirin protects some people and causes bleeding in others. The reason it suits you should be written down.' });
+  } else if (!diagnosis && m.cac && m.cac.value >= 100) {
     out.push({ id: 'category', topic: 'Your plan',
       ask: `Am I being treated for prevention, or for coronary artery disease?${aspirin ? ' And why is daily aspirin right for me?' : ''}`,
       why: `The answer sets your cholesterol goal: under 1.8 is common for one, under 1.4 for the other.${aspirin ? ' Aspirin protects some people and causes bleeding in others, so the reason should be written down.' : ''}` });
   }
   // 4. His home blood pressure since a medicine change: data only he has.
   const s = bpInsight(canon, now)?.sinceChange;
-  if (s && s.after.n >= 5) {
+  // Answered once a specialist's review after the change speaks to blood pressure.
+  const bpAnswered = s && reviewDay >= s.day && /\b(BP|blood pressure)\b/i.test(reviewText);
+  if (s && s.after.n >= 5 && !bpAnswered) {
     out.push({ id: `bp:${short(s.name)}`, topic: 'Blood pressure',
       ask: `Since ${short(s.name)} stopped on ${fmtDate(s.day)}, my home blood pressure averages ${s.after.sys}/${s.after.dia} over ${s.after.n} readings. Is that where you want it?`,
       why: `Your doctor can only judge that change from readings at home, and you have them. Show the "For my doctor" page.` });
@@ -149,7 +162,9 @@ export function nextQuestions(canon = {}, now = new Date()) {
   // 5. The question Leffy suggested for his latest photographed result.
   const latest = (canon.notes || []).filter(n => n.tag === RESULT_TAG).sort((a, b) => String(a.tsUTC).localeCompare(String(b.tsUTC))).pop();
   const lr = latest && noteData(latest);
-  if (lr?.askNext && now.getTime() - new Date(latest.tsUTC).getTime() <= 60 * DAY) {
+  // Not when it repeats the cholesterol question above.
+  const repeats = out.some(q => q.id === 'ldl') && /cholesterol|LDL|lipid/i.test(lr?.askNext || '');
+  if (lr?.askNext && !repeats && now.getTime() - new Date(latest.tsUTC).getTime() <= 60 * DAY) {
     out.push({ id: `result:${String(latest.tsUTC).slice(0, 16)}`, topic: 'Your new result', ask: lr.askNext,
       why: `${lr.summary ? lr.summary + ' ' : ''}Leffy said: ${lr.meaning}` });
   }

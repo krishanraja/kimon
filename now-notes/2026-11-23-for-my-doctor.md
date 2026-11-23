@@ -1,6 +1,6 @@
 # 2026-11-23: For my doctor, exact tablets, and the record moves on after an appointment
 
-**Status:** built and verified locally on branch `claude/amazing-ride-pxfkle`. Not merged or deployed yet: that is Krish's call. No Apps Script redeploy is needed.
+**Status:** merged to main in krishanraja/kimon#15 and live (production serves `whats-new.js` and `for-doctor.js` with the photo changes, checked 23 Nov). A follow-up PR retires questions a specialist's review answers. No Apps Script redeploy is needed.
 
 **What the live sheet showed (read-only audit, 23 November)**
 - Kimon uses it every day: he logged blood pressure on 19 of the 20 days from 4 to 23 November (he missed one) and ticked his tablets with nearly every reading.
@@ -48,3 +48,10 @@
 **Next step:** Krish merges and deploys. Then watch the sheet for his appointment answer, a photo of the angiogram result, and `doctor-asked` notes.
 
 **North Star check:** 16 entries by Kimon on 6 days in the week of 16 November, against a target of 2 (U1, on pace). This change aims at the second line, "his cardiologist finds his notes useful", by putting his own numbers and the right questions in front of his doctor.
+
+**Same day, later: photo of a result, and the cardiologist's letter filed**
+- Photo of a result now: real upload progress; one model call returns the rows plus Leffy's read (meaning, urgency, one question for the doctor); findings and red-flag rules set an urgency floor the model cannot lower; scan reports are filed one row per artery plus CAD-RADS and the Impression word for word; a Saved screen; Leffy's read saved as a `result-read` note. The real model has not been tested on a photo yet: the first real photo after the deploy is the check.
+- Ruling (Krish, 2026-11-23): file the cardiologist's letter of 17 Nov (with the CT angiogram, stress echo and echo reports) as if Kimon uploaded it, and bring his record up to date with it, the rosuvastatin dose included.
+- Written to the live sheet through the Google Sheets connector, attributed to Kimon with notes "From a PDF, read by AI": 10 TestResults rows (ids `doc-20261117-1` to `-10`), one `result-read` note, Questions Q4, Q5, Q6, Q7 answers, G4 closed, pathway stage "Treatment plan", Rosuvastatin 20 mg, and 8 Changelog rows. Read back after writing.
+- **North Star caution:** those rows carry source Kimon, so this week's counter will include them. Exclude the `doc-20261117-*` rows and the 23 Nov 13:00Z notes and changes when measuring the week of 23 November.
+- His For my doctor page now asks only what the letter leaves open: his cholesterol re-check against the new goal (LDL under 1.5) and why daily aspirin is right for him.

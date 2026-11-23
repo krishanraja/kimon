@@ -173,3 +173,16 @@ test('his review question covers the family\'s open review question', () => {
   const q = nextQuestions(canon(), NOW).find(x => x.id === 'review');
   assert.deepEqual(q.covers, ['Q7']);
 });
+
+test('a cardiologist review in his record retires the questions it answers', () => {
+  const c = canon();
+  c.testResults.push({ date: '2026-11-17', test: 'Cardiologist review (invented)', result: 'Non-obstructive coronary artery disease. Plan: statin up; continue current BP management.', lab: 'Example Cardiology', source: 'Kimon' });
+  c.notes.push(note('result-read', 'Letter', { summary: 's', meaning: 'm', askNext: 'When is my next cholesterol test?' }, '2026-11-22T22:00:00.000Z'));
+  const ids = nextQuestions(c, NOW).map(q => q.id);
+  assert.ok(!ids.includes('category'));
+  assert.ok(ids.includes('aspirin'));
+  assert.match(nextQuestions(c, NOW).find(q => q.id === 'aspirin').ask, /non-obstructive coronary artery disease/);
+  assert.ok(!ids.some(i => i.startsWith('bp:')), 'BP answered by the review');
+  assert.ok(!ids.some(i => i.startsWith('result:')), 'cholesterol asked once');
+  assert.ok(ids.includes('ldl'));
+});

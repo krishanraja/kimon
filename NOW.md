@@ -40,7 +40,8 @@ Lifecycle: live. The detail is in `README.md`.
 
 ## What is next and what is waiting on Krish
 
-- **Krish: merge and deploy** branch `claude/amazing-ride-pxfkle` (no Apps Script redeploy needed). Kimon sees "What's new" on his next open.
+- Live since 23 Nov (krishanraja/kimon#15). Kimon sees "What's new" on his next open. The first real photo of a result is the check that the real model fills Leffy's read.
+- The cardiologist's letter of 17 Nov is filed in his record (see the now-note). When measuring the week of 23 Nov, leave out the `doc-20261117-*` rows: Krish filed them for him.
 - Watch the sheet for his answer to the appointment question, and a photo of the angiogram result.
 - Watch for `doctor-asked` notes: the sign his doctor visits are using the list.
 - Measure the North Star again on Monday 30 November (target 3).
