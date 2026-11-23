@@ -16,7 +16,7 @@ test('photo rows: cleaned, dated, flagged as AI-read, duplicates spotted', () =>
   assert.equal(rows[0].duplicate, true);
   assert.equal(rows[1].date, '2026-10-16'); assert.equal(rows[1].dateGuessed, true);
   assert.match(rows[1].notes, /From a photo, read by AI/);
-  assert.match(rows[1].notes, /date not on photo/);
+  assert.match(rows[1].notes, /date not printed/);
 });
 test('photo size limits', () => {
   assert.equal(checkImage(null), null);

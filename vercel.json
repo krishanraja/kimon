@@ -7,7 +7,12 @@
       "includeFiles": "knowledge/**"
     },
     "api/photo.js": {
-      "maxDuration": 60
+      "maxDuration": 90,
+      "includeFiles": "knowledge/**"
+    },
+    "api/inbox.js": {
+      "maxDuration": 180,
+      "includeFiles": "knowledge/**"
     }
   },
   "headers": [
