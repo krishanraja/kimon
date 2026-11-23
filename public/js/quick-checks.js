@@ -50,7 +50,9 @@ export function quickChecks(canon = {}, now = new Date()) {
   // a past appointment date with no result. Asked once per date; "still waiting"
   // asks again a week later.
   const appt = isoDay(canon.profile?.next_appointment);
-  if (appt && appt < melbDay(now)) {
+  // A result already in the record from that day on means the answer is in.
+  const resultIn = (canon.testResults || []).some(r => !/blood pressure/i.test(r.test) && isoDay(r.date) >= appt);
+  if (appt && appt < melbDay(now) && !resultIn) {
     const id = `appt:${appt}`;
     const last = lastAnswer(canon, id);
     const waitedAWeek = last?.answer === 'waiting' && now.getTime() - new Date(last.ts).getTime() >= 7 * DAY;

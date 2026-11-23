@@ -13,6 +13,21 @@ const PHOTO_ROWS = [
   { date: '2026-10-12', test: 'LDL-C', result: '2.1 mmol/L', lab: 'Example Pathology', notes: 'H' },
 ];
 
+// An invented CT coronary angiogram report (MOCK_PHOTO=ctca). Example only.
+const CTCA_PHOTO = {
+  kind: 'scan report', summary: 'A CT coronary angiogram report from 16 November.',
+  results: [
+    { date: '2026-11-16', test: 'Left main stenosis', result: '<25% (minimal)', lab: 'Example Imaging', notes: '' },
+    { date: '2026-11-16', test: 'LAD stenosis', result: '50-69% (moderate), proximal, calcified plaque', lab: 'Example Imaging', notes: '' },
+    { date: '2026-11-16', test: 'CAD-RADS', result: 'CAD-RADS 3', lab: 'Example Imaging', notes: '' },
+    { date: '2026-11-16', test: 'Impression', result: 'Moderate stenosis of the proximal LAD. Heavy calcification limits assessment of the mid LAD. Functional assessment may be considered.', lab: 'Example Imaging', notes: '' },
+  ],
+  unreadable: '',
+  meaning: 'Your main front artery (the LAD) is narrowed by about half to two thirds. That is moderate, not blocked. Your left main artery is fine. The calcium made part of the picture unclear, so your cardiologist may want a test that shows blood flow.',
+  urgency: 'soon',
+  askNext: 'My LAD is 50 to 69% narrowed. Do I need a test of blood flow, and does this change my treatment?',
+};
+
 // The name the server told Leffy to use for Kimon ("your dad", "Kim", "you").
 function term(text) {
   if (/Talk to him directly as "you"/.test(text)) return { name: 'you', poss: 'your' };
@@ -64,7 +79,11 @@ function chat(msg, image, who) {
 export async function mockComplete({ system, user, onProgress = () => {}, onText = () => {}, web }) {
   const { msg, image, text: prompt } = latest(user);
   let out;
-  if (/"kind":/.test(system)) out = { kind: 'lab report', summary: 'A cholesterol blood test from 12 October. His LDL is 2.1, much lower than before.', results: PHOTO_ROWS, unreadable: '' };
+  if (/"kind":/.test(system)) {
+    await sleep(900);
+    out = process.env.MOCK_PHOTO === 'ctca' ? CTCA_PHOTO : { kind: 'lab report', summary: 'A cholesterol blood test from 12 October. His LDL is 2.1, much lower than before.', results: PHOTO_ROWS, unreadable: '',
+      meaning: 'Good news. Your LDL (the bad cholesterol) is 2.1, down from 4.0 in August. Your goal is under 1.8, so you are close but not there yet.', urgency: 'routine', askNext: 'My LDL is 2.1 and my goal is under 1.8. What is the next step to get there?' };
+  }
   else {
     if (web && /cost|pbs|price/i.test(msg)) { onProgress({ kind: 'search' }); await sleep(300); onProgress({ kind: 'results', n: 5 }); }
     await sleep(400);

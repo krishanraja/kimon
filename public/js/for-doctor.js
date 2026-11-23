@@ -6,12 +6,14 @@
 // Pure: no DOM, no network. Browser, server (Leffy) and tests.
 import { TAGS, noteData, melbDay, tabletDays, liveNotes, BODY_CHECK } from './kimon-model.js';
 import { bpInsight, bpSeries, extract, fmtDate, parseDate } from './metrics.js';
-import { currentMeds, dailyMeds, medLine } from './meds-model.js';
+import { currentMeds, dailyMeds, medLine, NOT_DAILY } from './meds-model.js';
 import { QUICK_TAG } from './quick-checks.js';
 
 const DAY = 86400000;
 // "I asked this": its own tag, so it never uses up the day's quick question.
 export const ASKED_TAG = 'doctor-asked';
+// What Leffy said about a photographed result (meaning, and what to ask next).
+export const RESULT_TAG = 'result-read';
 const iso = v => { const p = parseDate(v); return p ? `${p.y}-${String(p.m + 1).padStart(2, '0')}-${String(p.d).padStart(2, '0')}` : ''; };
 const short = n => String(n || '').replace(/\s*\(.*?\)\s*/g, ' ').trim();
 const answers = canon => (canon.notes || []).filter(n => n.tag === QUICK_TAG).map(n => ({ ...noteData(n), ts: n.tsUTC })).filter(a => a.id);
@@ -80,7 +82,10 @@ export function doctorSummary(canon = {}, now = new Date()) {
     return { day: melbDay(n.tsUTC), clear: !odd.length, odd };
   }).slice(-4);
   const m = currentMeds(canon);
-  out.meds = [...m.current.map(x => medLine({ ...x, name: short(x.name) })), ...m.stopped.slice(-2).map(x => `${short(x.name)} (stopped${x.updated ? ' ' + fmtDate(x.updated) : ''})`)];
+  // Stopped: only medicines he took every day. One taken before a test, or a
+  // short course with no dose or time, is not a change his doctor needs here.
+  const stoppedDaily = m.stopped.filter(x => !NOT_DAILY.includes(x.when) && (x.dose || x.when));
+  out.meds = [...m.current.map(x => medLine({ ...x, name: short(x.name) })), ...stoppedDaily.map(x => `${short(x.name)} (stopped${x.updated ? ' ' + fmtDate(x.updated) : ''})`)];
   return out;
 }
 
@@ -141,9 +146,17 @@ export function nextQuestions(canon = {}, now = new Date()) {
       ask: `Since ${short(s.name)} stopped on ${fmtDate(s.day)}, my home blood pressure averages ${s.after.sys}/${s.after.dia} over ${s.after.n} readings. Is that where you want it?`,
       why: `Your doctor can only judge that change from readings at home, and you have them. Show the "For my doctor" page.` });
   }
-  // 5. Who looks after his heart from here.
+  // 5. The question Leffy suggested for his latest photographed result.
+  const latest = (canon.notes || []).filter(n => n.tag === RESULT_TAG).sort((a, b) => String(a.tsUTC).localeCompare(String(b.tsUTC))).pop();
+  const lr = latest && noteData(latest);
+  if (lr?.askNext && now.getTime() - new Date(latest.tsUTC).getTime() <= 60 * DAY) {
+    out.push({ id: `result:${String(latest.tsUTC).slice(0, 16)}`, topic: 'Your new result', ask: lr.askNext,
+      why: `${lr.summary ? lr.summary + ' ' : ''}Leffy said: ${lr.meaning}` });
+  }
+  // 6. Who looks after his heart from here.
   if ((canon.questions || []).some(q => q.status !== 'answered' && /how often should he be reviewed/i.test(q.question))) {
-    out.push({ id: 'review', topic: 'Next check',
+    const qn = (canon.questions || []).find(q => q.status !== 'answered' && /how often should he be reviewed/i.test(q.question));
+    out.push({ id: 'review', topic: 'Next check', covers: [qn.id],
       ask: 'Who looks after my heart from here, my GP or the cardiologist? When is my next check?',
       why: 'Your record has no plan after this yet, so nothing is booked.' });
   }

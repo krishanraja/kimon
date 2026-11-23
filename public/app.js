@@ -453,7 +453,9 @@ function briefText() {
     }
   }
   // What he records himself, and the questions his record says to ask next.
-  const own = summaryLines(doctorSummary(c)).filter(l => !/^Medicines:/.test(l));
+  // Medicines and the appointment have their own lines in this brief.
+  const sum = doctorSummary(c);
+  const own = summaryLines(sum).filter(l => !/^Medicines:/.test(l) && l !== apptLine(sum.appt));
   if (own.length) { L.push('', 'FROM HIS OWN RECORDS'); own.forEach(l => L.push(`- ${l}`)); }
   const meds = currentMeds(c);
   L.push('', 'MEDICATIONS');
@@ -471,7 +473,9 @@ function briefText() {
   const ans = qs.filter(q => q.status === 'answered');
   if (ans.length) { L.push('', 'ANSWERS SO FAR'); ans.forEach(q => L.push(`- ${q.question} ${q.answer}`)); }
   const next = nextQuestions(c);
-  const q = qs.filter(x => x.status !== 'answered').sort((a, b) => (+a.priority || 9) - (+b.priority || 9));
+  // A family question his own list already asks is not repeated.
+  const covered = new Set(next.flatMap(x => x.covers || []));
+  const q = qs.filter(x => x.status !== 'answered' && !covered.has(x.id)).sort((a, b) => (+a.priority || 9) - (+b.priority || 9));
   if (next.length) { L.push('', 'QUESTIONS HE IS BRINGING (from gaps in his record)'); next.forEach((x, n) => L.push(`${n + 1}. ${x.ask}`)); }
   if (q.length) { L.push('', 'OUR QUESTIONS'); q.forEach((x, n) => L.push(`${n + 1}. ${x.question}`)); }
   return L.join('\n');

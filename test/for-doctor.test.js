@@ -130,3 +130,46 @@ test('what\'s new: shown once per item, and never on a brand-new phone', async (
   const broken = { getItem() { throw new Error('blocked'); }, setItem() { throw new Error('blocked'); } };
   assert.equal(unseen(broken).length, WHATS_NEW.length, 'blocked storage still works, once per session');
 });
+
+test('a scan report: findings set an urgency floor the model cannot lower', async () => {
+  const { findingFloor, cleanMeaning, RESULTS_RULES } = await import('../lib/photo.js');
+  assert.match(RESULTS_RULES, /Impression/);
+  assert.match(RESULTS_RULES, /CAD-RADS/);
+  const moderate = [{ test: 'LAD stenosis', result: '50-69% (moderate)' }, { test: 'Left main stenosis', result: '<25% (minimal)' }];
+  assert.equal(findingFloor(moderate).level, 'routine');
+  assert.equal(findingFloor([{ test: 'LAD stenosis', result: '70-99% (severe)' }]).level, 'soon');
+  assert.equal(findingFloor([{ test: 'Left main stenosis', result: '50-69%' }]).level, 'urgent');
+  assert.equal(findingFloor([{ test: 'CAD-RADS', result: 'CAD-RADS 4A' }]).level, 'soon');
+  // The model says routine; the findings say soon: soon wins. The model can raise, never lower.
+  assert.equal(cleanMeaning({ urgency: 'routine', meaning: 'x' }, [{ test: 'LAD stenosis', result: '70-99%' }]).urgency, 'soon');
+  assert.equal(cleanMeaning({ urgency: 'urgent', meaning: 'x' }, moderate).urgency, 'urgent');
+  assert.equal(cleanMeaning({ urgency: 'routine' }, moderate, 'urgent').urgency, 'urgent', 'red-flag rules set a floor too');
+  assert.equal(cleanMeaning({ urgency: 'nonsense' }, moderate).urgency, 'routine');
+});
+
+test('a scan result after the appointment closes the scan question; Leffy\'s suggested question appears', () => {
+  const c = canon();
+  c.testResults.push({ date: '2026-11-10', test: 'LAD stenosis', result: '50-69% (moderate)', source: 'Kimon', notes: 'From a photo, read by AI' });
+  c.notes.push(note('result-read', 'Photo of a result: A CT angiogram report.', { summary: 'A CT angiogram report.', meaning: 'Moderate narrowing.', askNext: 'Do I need a test of blood flow?', urgency: 'soon' }, '2026-11-22T22:00:00.000Z'));
+  assert.equal(appointment(c, NOW).status, 'results-in');
+  const ids = nextQuestions(c, NOW).map(q => q.id);
+  assert.ok(!ids.includes('ctca'));
+  const r = nextQuestions(c, NOW).find(q => q.id.startsWith('result:'));
+  assert.equal(r.ask, 'Do I need a test of blood flow?');
+  assert.match(r.why, /Moderate narrowing/);
+});
+
+test('the medicines line keeps a stopped daily medicine and leaves out test-only and short courses', () => {
+  const c = canon();
+  c.medications.find(m => m.name === 'Medicine T').status = 'stopped';
+  c.medications.push({ name: 'Medicine C', dose: '', frequency: '', status: 'stopped' });
+  const line = summaryLines(doctorSummary(c, NOW)).find(l => l.startsWith('Medicines:'));
+  assert.match(line, /Medicine B \(stopped/);
+  assert.ok(!/Medicine T/.test(line));
+  assert.ok(!/Medicine C/.test(line));
+});
+
+test('his review question covers the family\'s open review question', () => {
+  const q = nextQuestions(canon(), NOW).find(x => x.id === 'review');
+  assert.deepEqual(q.covers, ['Q7']);
+});

@@ -6,9 +6,11 @@ import { createLeffy } from './leffy.js';
 
 export const WHATS_NEW = [
   { id: '2026-11-doctor', icon: 'doctor', tone: 'bp', title: 'For my doctor',
-    line: 'Your blood pressure and tablets on one page, plus the best questions to ask next.', action: 'doctor' },
+    line: 'Your numbers and the best questions to ask, on one page.', action: 'doctor' },
+  { id: '2026-11-photo', icon: 'cam', tone: 'fam', title: 'Photos, explained',
+    line: 'Leffy reads a photo of a result, says what it means, and saves it.', action: 'photo' },
   { id: '2026-11-tablets', icon: 'pill', tone: 'tabl', title: 'Tablets, exactly',
-    line: 'Today now names the tablets one tap ticks. A medicine just for a test is left out.' },
+    line: 'Today names exactly the tablets one tap ticks.' },
 ];
 
 const KEY = 'kimon.me.seenNew';
