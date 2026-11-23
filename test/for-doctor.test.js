@@ -186,3 +186,25 @@ test('a cardiologist review in his record retires the questions it answers', () 
   assert.ok(!ids.some(i => i.startsWith('result:')), 'cholesterol asked once');
   assert.ok(ids.includes('ldl'));
 });
+
+test('emailed documents wait for Kimon until saved or set aside; the inbox key is checked', async () => {
+  const { pendingDocs, INBOX_TAG, INBOX_DONE } = await import('../public/js/inbox-model.js');
+  const { keyOk } = await import('../api/inbox.js');
+  const c = canon();
+  c.notes.push(note(INBOX_TAG, 'DOCUMENT FROM EMAIL', { id: 'a-0', summary: 'One', results: [] }, '2026-11-22T01:00:00.000Z'));
+  c.notes.push(note(INBOX_TAG, 'DOCUMENT FROM EMAIL', { id: 'b-0', summary: 'Two', results: [] }, '2026-11-22T02:00:00.000Z'));
+  assert.deepEqual(pendingDocs(c).map(d => d.id), ['a-0', 'b-0']);
+  c.notes.push(note(INBOX_DONE, 'DOCUMENT SAVED', { id: 'a-0', saved: true }, '2026-11-22T03:00:00.000Z'));
+  assert.deepEqual(pendingDocs(c).map(d => d.id), ['b-0']);
+  assert.equal(keyOk('right', 'right'), true);
+  assert.equal(keyOk('wrong', 'right'), false);
+  assert.equal(keyOk('', ''), false, 'no secret set means closed');
+});
+
+test('a PDF is sent to the model as a document, within the size limit', async () => {
+  const { fileBlock, checkImage, MAX_PDF_B64 } = await import('../lib/photo.js');
+  assert.equal(fileBlock({ type: 'application/pdf', data: 'x' }).type, 'document');
+  assert.equal(fileBlock({ type: 'image/jpeg', data: 'x' }).type, 'image');
+  assert.equal(checkImage({ type: 'application/pdf', data: 'a'.repeat(1000) }), null);
+  assert.match(checkImage({ type: 'application/pdf', data: 'a'.repeat(MAX_PDF_B64 + 1) }), /too large/);
+});
