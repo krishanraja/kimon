@@ -42,6 +42,7 @@ Lifecycle: live. The detail is in `README.md`.
 
 - Live since 23 Nov (krishanraja/kimon#15). Kimon sees "What's new" on his next open. The first real photo of a result is the check that the real model fills Leffy's read.
 - The cardiologist's letter of 17 Nov is filed in his record (see the now-note). When measuring the week of 23 Nov, leave out the `doc-20261117-*` rows: Krish filed them for him.
+- **Krish: switch on** the n8n workflow "Beside: documents Kimon forwards" and give Kimon the +beside address. Then the first forwarded email is the live check.
 - Watch the sheet for his answer to the appointment question, and a photo of the angiogram result.
 - Watch for `doctor-asked` notes: the sign his doctor visits are using the list.
 - Measure the North Star again on Monday 30 November (target 3).

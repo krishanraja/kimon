@@ -10,7 +10,7 @@ export const WHATS_NEW = [
   { id: '2026-11-photo', icon: 'cam', tone: 'fam', title: 'Photos, explained',
     line: 'Leffy reads a photo of a result, says what it means, and saves it.', action: 'photo' },
   { id: '2026-11-email', icon: 'doc', tone: 'bp', title: 'Email your doctor\'s letters',
-    line: 'Forward any doctor\'s email with a letter or result to Beside in your contacts. It appears here to check.' },
+    line: 'Forward any doctor\'s email with a letter or result to the Beside email address Krish gave you. It appears here to check.' },
   { id: '2026-11-tablets', icon: 'pill', tone: 'tabl', title: 'Tablets, exactly',
     line: 'Today names exactly the tablets one tap ticks.' },
 ];
